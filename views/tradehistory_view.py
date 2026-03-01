@@ -811,49 +811,49 @@ class TradeHistoryView(ft.Container):
         rows = []
         try:
             for i, row in enumerate(page_df.itertuples(index=False), start=1):
-            row_dict = row._asdict()
-            trade_id = str(row_dict.get('trade_id', ''))
-            row_num = start_idx + i
-            row_type = row_dict['type']
-            trade_color = ft.Colors.GREEN if row_type == 'BUY' else ft.Colors.RED
+                row_dict = row._asdict()
+                trade_id = str(row_dict.get('trade_id', ''))
+                row_num = start_idx + i
+                row_type = row_dict['type']
+                trade_color = ft.Colors.GREEN if row_type == 'BUY' else ft.Colors.RED
 
-            is_selected = trade_id in self.selected_trades
-            chk = ft.Checkbox(value=is_selected, on_change=lambda e, tid=trade_id: self.handle_row_select(tid, e.control.value))
+                is_selected = trade_id in self.selected_trades
+                chk = ft.Checkbox(value=is_selected, on_change=lambda e, tid=trade_id: self.handle_row_select(tid, e.control.value))
 
-            row_data = {
-                'trade_id': trade_id, 'date': str(row_dict['date']), 'symbol': str(row_dict['symbol']),
-                'type': row_type, 'qty': float(row_dict['qty']), 'price': float(row_dict['price']),
-                'fee': float(row_dict.get('fee', 0.0)), 'run_qty': float(row_dict['run_qty']),
-                'avg_cost': float(row_dict['avg_cost']), 'running_pnl': float(row_dict['running_pnl']),
-                'broker': str(row_dict['broker'])
-            }
+                row_data = {
+                    'trade_id': trade_id, 'date': str(row_dict['date']), 'symbol': str(row_dict['symbol']),
+                    'type': row_type, 'qty': float(row_dict['qty']), 'price': float(row_dict['price']),
+                    'fee': float(row_dict.get('fee', 0.0)), 'run_qty': float(row_dict['run_qty']),
+                    'avg_cost': float(row_dict['avg_cost']), 'running_pnl': float(row_dict['running_pnl']),
+                    'broker': str(row_dict['broker'])
+                }
 
-            pnl_val = row_data['running_pnl']
-            pnl_color = ft.Colors.GREEN_400 if pnl_val > 0 else (ft.Colors.RED_400 if pnl_val < 0 else ft.Colors.GREY_400)
-            pnl_display = f"₹{pnl_val:,.2f}" if row_type == 'SELL' else "—"
+                pnl_val = row_data['running_pnl']
+                pnl_color = ft.Colors.GREEN_400 if pnl_val > 0 else (ft.Colors.RED_400 if pnl_val < 0 else ft.Colors.GREY_400)
+                pnl_display = f"₹{pnl_val:,.2f}" if row_type == 'SELL' else "—"
 
-            rows.append(
-                ft.DataRow(
-                    selected=is_selected,
-                    cells=[
-                        ft.DataCell(chk),
-                        ft.DataCell(ft.Text(str(row_num), text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_500)),
-                        ft.DataCell(ft.Text(row_data['date'])),
-                        ft.DataCell(ft.Text(str(trade_id), size=11, color=ft.Colors.GREY_400)),
-                        ft.DataCell(ft.Text(row_data['symbol'], weight=ft.FontWeight.BOLD)),
-                        ft.DataCell(ft.Text(row_data['type'], color=trade_color)),
-                        ft.DataCell(ft.Text(f"{row_data['qty']}", text_align=ft.TextAlign.RIGHT)),
-                        ft.DataCell(ft.Text(f"₹{row_data['price']:,.2f}", text_align=ft.TextAlign.RIGHT)),
-                        ft.DataCell(ft.Text(f"{row_data['run_qty']}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.BLUE_200)),
-                        ft.DataCell(ft.Text(f"₹{row_data['avg_cost']:,.2f}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.AMBER_200)),
-                        ft.DataCell(ft.Text(pnl_display, text_align=ft.TextAlign.RIGHT, color=pnl_color)),
-                        ft.DataCell(ft.Text(f"₹{row_data['fee']:,.2f}", text_align=ft.TextAlign.RIGHT)),
-                        ft.DataCell(ft.Row([
-                            ft.IconButton(ft.Icons.EDIT, tooltip="Edit Trade", icon_size=16, icon_color=ft.Colors.BLUE_400, on_click=lambda e, r=row_data: self.open_edit_dialog(r)),
-                            ft.IconButton(ft.Icons.DELETE_OUTLINE, tooltip="Delete Trade", icon_size=16, icon_color=ft.Colors.RED_400, on_click=lambda e, b=row_data['broker'], tid=trade_id: self.delete_trade(b, tid))
-                        ], spacing=0))
-                ])
-            )
+                rows.append(
+                    ft.DataRow(
+                        selected=is_selected,
+                        cells=[
+                            ft.DataCell(chk),
+                            ft.DataCell(ft.Text(str(row_num), text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_500)),
+                            ft.DataCell(ft.Text(row_data['date'])),
+                            ft.DataCell(ft.Text(str(trade_id), size=11, color=ft.Colors.GREY_400)),
+                            ft.DataCell(ft.Text(row_data['symbol'], weight=ft.FontWeight.BOLD)),
+                            ft.DataCell(ft.Text(row_data['type'], color=trade_color)),
+                            ft.DataCell(ft.Text(f"{row_data['qty']}", text_align=ft.TextAlign.RIGHT)),
+                            ft.DataCell(ft.Text(f"₹{row_data['price']:,.2f}", text_align=ft.TextAlign.RIGHT)),
+                            ft.DataCell(ft.Text(f"{row_data['run_qty']}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.BLUE_200)),
+                            ft.DataCell(ft.Text(f"₹{row_data['avg_cost']:,.2f}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.AMBER_200)),
+                            ft.DataCell(ft.Text(pnl_display, text_align=ft.TextAlign.RIGHT, color=pnl_color)),
+                            ft.DataCell(ft.Text(f"₹{row_data['fee']:,.2f}", text_align=ft.TextAlign.RIGHT)),
+                            ft.DataCell(ft.Row([
+                                ft.IconButton(ft.Icons.EDIT, tooltip="Edit Trade", icon_size=16, icon_color=ft.Colors.BLUE_400, on_click=lambda e, r=row_data: self.open_edit_dialog(r)),
+                                ft.IconButton(ft.Icons.DELETE_OUTLINE, tooltip="Delete Trade", icon_size=16, icon_color=ft.Colors.RED_400, on_click=lambda e, b=row_data['broker'], tid=trade_id: self.delete_trade(b, tid))
+                            ], spacing=0))
+                    ])
+                )
         except Exception as ex:
             print(f"[TRADE_HISTORY] ERROR building rows: {ex}")
             import traceback
