@@ -141,7 +141,7 @@ class TradeHistoryView(ft.Container):
             rows=[]
         )
 
-        self.status_text = ft.Text("Use the filters above and click Search to load trades.", italic=True, color=ft.Colors.GREY_500)
+        self.status_text = ft.Text("Loading trades with default filters...", italic=True, color=ft.Colors.GREY_500)
         self.loading_ring = ft.ProgressRing(width=20, height=20, stroke_width=2, visible=False)
         self.loading_status = ft.Text("", size=11, color=ft.Colors.GREY_400, italic=True)
 
@@ -806,8 +806,11 @@ class TradeHistoryView(ft.Container):
         end_idx = start_idx + self.page_size
         page_df = df.iloc[start_idx:end_idx]
 
+        print(f"[TRADE_HISTORY] render_table building rows from index {start_idx} to {end_idx}, page_df length = {len(page_df)}")
+        
         rows = []
-        for i, row in enumerate(page_df.itertuples(index=False), start=1):
+        try:
+            for i, row in enumerate(page_df.itertuples(index=False), start=1):
             row_dict = row._asdict()
             trade_id = str(row_dict.get('trade_id', ''))
             row_num = start_idx + i
@@ -851,8 +854,14 @@ class TradeHistoryView(ft.Container):
                         ], spacing=0))
                 ])
             )
+        except Exception as ex:
+            print(f"[TRADE_HISTORY] ERROR building rows: {ex}")
+            import traceback
+            traceback.print_exc()
+            rows = []
 
         self.table.rows = rows
+        print(f"[TRADE_HISTORY] Setting table.rows to {len(rows)} rows")
         
         # Summary Row Calculation
         total_qty = df['qty'].sum()
@@ -884,9 +893,11 @@ class TradeHistoryView(ft.Container):
         self._update_pagination_ui()
         # Only update table/summary/status, not entire page (much faster)
         try:
+            print(f"[TRADE_HISTORY] Updating table with {len(rows)} rows")
             self.table.update()
             self.summary_table.update()
             self.status_text.update()
+            print(f"[TRADE_HISTORY] Table update successful!")
             # Scroll tables to the right using page.run_task to handle async coroutine
             async def scroll_to_right():
                 try:
@@ -896,7 +907,10 @@ class TradeHistoryView(ft.Container):
                     pass
             if hasattr(self.app_state, 'page') and self.app_state.page:
                 self.app_state.page.run_task(scroll_to_right)
-        except Exception:
+        except Exception as ex:
+            print(f"[TRADE_HISTORY] ERROR updating table: {ex}")
+            import traceback
+            traceback.print_exc()
             pass
 
     def _update_pagination_ui(self):
