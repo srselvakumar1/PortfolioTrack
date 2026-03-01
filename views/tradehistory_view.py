@@ -387,27 +387,15 @@ class TradeHistoryView(ft.Container):
                 # Clear cache to force reload with new date
                 self._data_loaded = False
                 
-                # Update UI to show new date - try multiple update strategies
-                try:
-                    self.start_date_btn.update()
-                    print("[TRADE_HISTORY] start_date_btn.update() succeeded")
-                except Exception as ex: 
-                    print(f"[TRADE_HISTORY] start_date_btn.update() failed: {ex}")
+                # Defer reload to after event is fully processed
+                async def deferred_reload():
+                    try:
+                        self.load_data(_reload_brokers=False, use_cache=False)
+                    except Exception as ex:
+                        print(f"[TRADE_HISTORY] Error loading data after date change: {ex}")
                 
-                try:
-                    if hasattr(self.app_state, 'page') and self.app_state.page:
-                        self.app_state.page.update()
-                        print("[TRADE_HISTORY] app_state.page.update() succeeded")
-                    else:
-                        print("[TRADE_HISTORY] app_state.page is not available")
-                except Exception as ex: 
-                    print(f"[TRADE_HISTORY] app_state.page.update() failed: {ex}")
-                
-                # Reload data with new date
-                try:
-                    self.load_data(_reload_brokers=False, use_cache=False)
-                except Exception as ex:
-                    print(f"[TRADE_HISTORY] Error loading data after date change: {ex}")
+                if hasattr(self.app_state, 'page') and self.app_state.page:
+                    self.app_state.page.run_task(deferred_reload)
             else:
                 print(f"[TRADE_HISTORY] Start date unchanged: {self._start_date}")
 
@@ -428,27 +416,15 @@ class TradeHistoryView(ft.Container):
                 # Clear cache to force reload with new date
                 self._data_loaded = False
                 
-                # Update UI to show new date - try multiple update strategies
-                try:
-                    self.end_date_btn.update()
-                    print("[TRADE_HISTORY] end_date_btn.update() succeeded")
-                except Exception as ex:
-                    print(f"[TRADE_HISTORY] end_date_btn.update() failed: {ex}")
+                # Defer reload to after event is fully processed
+                async def deferred_reload():
+                    try:
+                        self.load_data(_reload_brokers=False, use_cache=False)
+                    except Exception as ex:
+                        print(f"[TRADE_HISTORY] Error loading data after date change: {ex}")
                 
-                try:
-                    if hasattr(self.app_state, 'page') and self.app_state.page:
-                        self.app_state.page.update()
-                        print("[TRADE_HISTORY] app_state.page.update() succeeded")
-                    else:
-                        print("[TRADE_HISTORY] app_state.page is not available")
-                except Exception as ex:
-                    print(f"[TRADE_HISTORY] app_state.page.update() failed: {ex}")
-                
-                # Reload data with new date
-                try:
-                    self.load_data(_reload_brokers=False, use_cache=False)
-                except Exception as ex:
-                    print(f"[TRADE_HISTORY] Error loading data after date change: {ex}")
+                if hasattr(self.app_state, 'page') and self.app_state.page:
+                    self.app_state.page.run_task(deferred_reload)
             else:
                 print(f"[TRADE_HISTORY] End date unchanged: {self._end_date}")
 
