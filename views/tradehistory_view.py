@@ -894,10 +894,15 @@ class TradeHistoryView(ft.Container):
         # Only update table/summary/status, not entire page (much faster)
         try:
             print(f"[TRADE_HISTORY] Updating table with {len(rows)} rows")
-            self.table.update()
-            self.summary_table.update()
-            self.status_text.update()
-            print(f"[TRADE_HISTORY] Table update successful!")
+            # Only update if control is already on the page; during initial load it won't be
+            if hasattr(self.table, 'page') and self.table.page:
+                self.table.update()
+                self.summary_table.update()
+                self.status_text.update()
+                print(f"[TRADE_HISTORY] Table update successful!")
+            else:
+                print(f"[TRADE_HISTORY] Table not yet on page, skipping update (data is loaded)")
+            
             # Scroll tables to the right using page.run_task to handle async coroutine
             async def scroll_to_right():
                 try:
