@@ -897,12 +897,15 @@ class TradeHistoryView(ft.Container):
             print(f"[TRADE_HISTORY] Before update: table.columns={len(self.table.columns)}, table.rows={len(self.table.rows)}, summary_table.rows={len(self.summary_table.rows)}, status_text.visible={self.status_text.visible}")
             print(f"[TRADE_HISTORY] Updating table with {len(rows)} rows")
             # Only update if control is already on the page; during initial load it won't be
-            if hasattr(self.table, 'page') and self.table.page:
-                self.table.update()
-                self.summary_table.update()
-                self.status_text.update()
-                print(f"[TRADE_HISTORY] Table update successful!")
-            else:
+            try:
+                page = self.table.page  # This raises RuntimeError if not yet added to page
+                if page:
+                    self.table.update()
+                    self.summary_table.update()
+                    self.status_text.update()
+                    print(f"[TRADE_HISTORY] Table update successful!")
+            except RuntimeError:
+                # Table not yet on page during initial render
                 print(f"[TRADE_HISTORY] Table not yet on page, skipping update (data is loaded)")
             
             # Scroll tables to the right using page.run_task to handle async coroutine
@@ -912,13 +915,16 @@ class TradeHistoryView(ft.Container):
                     await self.summary_row.scroll_to(offset=float('inf'), duration=0)
                 except Exception:
                     pass
-            if hasattr(self.app_state, 'page') and self.app_state.page:
-                self.app_state.page.run_task(scroll_to_right)
+            try:
+                page = self.app_state.page
+                if page:
+                    page.run_task(scroll_to_right)
+            except RuntimeError:
+                pass
         except Exception as ex:
             print(f"[TRADE_HISTORY] ERROR updating table: {ex}")
             import traceback
             traceback.print_exc()
-            pass
 
     def _update_pagination_ui(self):
         max_page = max(1, (self.total_records + self.page_size - 1) // self.page_size)
