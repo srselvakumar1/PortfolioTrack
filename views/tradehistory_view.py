@@ -321,6 +321,9 @@ class TradeHistoryView(ft.Container):
 
     def _on_symbol_search(self, e):
         """Debounced symbol search: wait 300ms after user stops typing."""
+        search_val = self.symbol_filter.value.strip().upper() if self.symbol_filter.value else ""
+        print(f"[TRADE_HISTORY] _on_symbol_search triggered, value='{search_val}', debouncing for 300ms...")
+        
         if self._search_timer:
             self._search_timer.cancel()
         
@@ -605,6 +608,8 @@ class TradeHistoryView(ft.Container):
             self._end_date.strftime('%Y-%m-%d') if self._end_date else None
         )
         
+        print(f"[TRADE_HISTORY] load_data called: broker={current_filters[0]}, symbol={current_filters[1]}, type={current_filters[2]}, dates={current_filters[3]} to {current_filters[4]}")
+        
         # If cache exists and filters unchanged and we're re-visiting, display cached data instantly
         if use_cache and self._data_loaded and self._cached_filters == current_filters and self.current_df is not None:
             if not self._is_preloading:
@@ -661,13 +666,18 @@ class TradeHistoryView(ft.Container):
         # Add ORDER BY for chronological calculations
         query += " ORDER BY t.date ASC"
         
+        # DEBUG: Print the full SQL query with parameters
+        if not self._is_preloading:
+            print(f"[TRADE_HISTORY] SQL Query: {query}")
+            print(f"[TRADE_HISTORY] SQL Params: {params}")
+        
         t1 = time.time()
         with db_session() as conn:
             df = pd.read_sql_query(query, conn, params=params)
         t2 = time.time()
         query_time = (t2 - t1) * 1000
         if not self._is_preloading:
-            print(f"[TRADE_HISTORY] SQL Query: {query_time:.1f}ms, {len(df)} rows")
+            print(f"[TRADE_HISTORY] Query executed in {query_time:.1f}ms, returned {len(df)} rows")
 
         # Create cache key from current filters
         cache_key = (f_broker, f_symbol, f_type, 
@@ -761,10 +771,15 @@ class TradeHistoryView(ft.Container):
         if self._is_preloading:
             return
             
-        if self.current_df is None: return
+        if self.current_df is None:
+            print("[TRADE_HISTORY] render_table called but current_df is None!")
+            return
         df = self.current_df
+        
+        print(f"[TRADE_HISTORY] render_table called with {len(df)} rows, page_size={self.page_size}, current_page={self.current_page}")
 
         if df.empty:
+            print("[TRADE_HISTORY] DataFrame is empty!")
             self.table.rows = []
             self.status_text.value = "No trades found for the selected filters."
             self.status_text.visible = True
