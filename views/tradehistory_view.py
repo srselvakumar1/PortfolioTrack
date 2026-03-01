@@ -179,14 +179,14 @@ class TradeHistoryView(ft.Container):
             ft.Container(self.type_filter, width=98),
             ft.Container(
                 content=ft.Column([
-                    ft.Text("Start Date", size=14, color=ft.Colors.GREY_400),
+                    ft.Text("Start Date", size=13, color=ft.Colors.GREY_400),
                     self.start_date_btn
                 ], spacing=3, tight=True),
                 width=155
             ),
             ft.Container(
                 content=ft.Column([
-                    ft.Text("End Date", size=14, color=ft.Colors.GREY_400),
+                    ft.Text("End Date", size=13, color=ft.Colors.GREY_400),
                     self.end_date_btn
                 ], spacing=3, tight=True),
                 width=150
@@ -892,21 +892,17 @@ class TradeHistoryView(ft.Container):
         self.select_all_chk.value = bool(len(page_df) > 0 and all_visible_selected)
         
         self._update_pagination_ui()
-        # Only update table/summary/status, not entire page (much faster)
+        # Update page to reflect all changes (table.rows, summary_table.rows, etc.)
         try:
-            print(f"[TRADE_HISTORY] Before update: table.columns={len(self.table.columns)}, table.rows={len(self.table.rows)}, summary_table.rows={len(self.summary_table.rows)}, status_text.visible={self.status_text.visible}")
-            print(f"[TRADE_HISTORY] Updating table with {len(rows)} rows")
-            # Only update if control is already on the page; during initial load it won't be
-            try:
-                page = self.table.page  # This raises RuntimeError if not yet added to page
-                if page:
-                    self.table.update()
-                    self.summary_table.update()
-                    self.status_text.update()
-                    print(f"[TRADE_HISTORY] Table update successful!")
-            except RuntimeError:
-                # Table not yet on page during initial render
-                print(f"[TRADE_HISTORY] Table not yet on page, skipping update (data is loaded)")
+            print(f"[TRADE_HISTORY] Before update: table.rows={len(self.table.rows)}, summary_table.rows={len(self.summary_table.rows)}, status_text.visible={self.status_text.visible}")
+            print(f"[TRADE_HISTORY] Set table.rows to {len(rows)} DataRow objects")
+            
+            # Use app_state.page.update() to propagate changes - this works even if table isn't directly accessible
+            if hasattr(self.app_state, 'page') and self.app_state.page:
+                self.app_state.page.update()
+                print(f"[TRADE_HISTORY] Page update successful!")
+            else:
+                print(f"[TRADE_HISTORY] App state page not available, skipping update")
             
             # Scroll tables to the right using page.run_task to handle async coroutine
             async def scroll_to_right():
@@ -919,10 +915,10 @@ class TradeHistoryView(ft.Container):
                 page = self.app_state.page
                 if page:
                     page.run_task(scroll_to_right)
-            except RuntimeError:
+            except Exception:
                 pass
         except Exception as ex:
-            print(f"[TRADE_HISTORY] ERROR updating table: {ex}")
+            print(f"[TRADE_HISTORY] ERROR updating page: {ex}")
             import traceback
             traceback.print_exc()
 
