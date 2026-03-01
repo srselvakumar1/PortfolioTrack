@@ -22,10 +22,10 @@ class TradeHistoryView(ft.Container):
         self.page_size = 25  
         self.total_records = 0
         
-        # Calculate default dates once: yesterday to today
+        # Calculate default dates: show all trades (5 years back to today)
         today = datetime.now()
-        yesterday = today - timedelta(days=1)
-        self._start_date = yesterday.date()  # Store as date for filter logic
+        all_trades_start = today - timedelta(days=1825)  # ~5 years
+        self._start_date = all_trades_start.date()  # Store as date for filter logic
         self._end_date = today.date()
         
         self.sort_column_index = 2 # Date as default
@@ -43,9 +43,9 @@ class TradeHistoryView(ft.Container):
 
         self.export_picker = ft.FilePicker()
         
-        # Initialize date pickers with default values (yesterday to today)
+        # Initialize date pickers with default values (all trades visible by default)
         self.start_date_picker = ft.DatePicker(
-            value=yesterday,
+            value=all_trades_start,
             on_change=self._on_start_date_change
         )
         self.end_date_picker = ft.DatePicker(
@@ -81,7 +81,7 @@ class TradeHistoryView(ft.Container):
                 ft.dropdown.Option("BUY"),
                 ft.dropdown.Option("SELL"),
             ],
-            value="BUY",
+            value="All",
             label_style=ft.TextStyle(size=16, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_300),
             dense=False,
             content_padding=ft.padding.symmetric(horizontal=8, vertical=12)
