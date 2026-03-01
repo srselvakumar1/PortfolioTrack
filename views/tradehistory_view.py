@@ -863,6 +863,10 @@ class TradeHistoryView(ft.Container):
 
         self.table.rows = rows
         print(f"[TRADE_HISTORY] Set self.table.rows to {len(rows)} DataRow objects")
+        if len(rows) > 0:
+            first_row = rows[0]
+            print(f"[TRADE_HISTORY] First DataRow: cells_count={len(first_row.cells) if hasattr(first_row, 'cells') else 'N/A'}, selected={first_row.selected if hasattr(first_row, 'selected') else 'N/A'}")
+        print(f"[TRADE_HISTORY] table.visible={self.table.visible}, table_row.visible={self.table_row.visible}")
         
         # Summary Row Calculation
         total_qty = df['qty'].sum()
@@ -894,7 +898,7 @@ class TradeHistoryView(ft.Container):
         self._update_pagination_ui()
         # Update page to reflect all changes (table.rows, summary_table.rows, etc.)
         try:
-            print(f"[TRADE_HISTORY] Before update: table.rows={len(self.table.rows)}, summary_table.rows={len(self.summary_table.rows)}, status_text.visible={self.status_text.visible}")
+            print(f"[TRADE_HISTORY] Before update: table.columns={len(self.table.columns)}, table.rows={len(self.table.rows)}, summary_table.rows={len(self.summary_table.rows)}, status_text.visible={self.status_text.visible}")
             print(f"[TRADE_HISTORY] Set table.rows to {len(rows)} DataRow objects")
             
             # Use app_state.page.update() to propagate changes - this works even if table isn't directly accessible
