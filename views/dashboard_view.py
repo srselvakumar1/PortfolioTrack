@@ -270,6 +270,15 @@ class DashboardView(ft.Container):
         self.insights_row.controls[1].content = harvesting_col
         
         try:
+            # Update each container after changing content
+            self.performers_row.controls[0].update()
+            self.performers_row.controls[1].update()
+            self.insights_row.controls[0].update()
+            self.insights_row.controls[1].update()
+        except Exception:
+            pass
+        
+        try:
             if self.app_state.page:
                 self.update()
         except Exception:

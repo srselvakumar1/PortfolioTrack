@@ -1,7 +1,7 @@
 import flet as ft
 from state import AppState
 from components.ui_elements import (
-    page_title, premium_card, status_chip, show_toast, alternating_row_color, 
+    page_title, premium_card, status_chip, show_toast,
     create_column_tooltip_header, stock_name_with_badge, holdings_stats_card, 
     enhanced_filter_panel, sort_indicator, quick_action_buttons, 
     enhanced_pagination_control, color_coded_value_cell, mini_sparkline_cell,
@@ -62,7 +62,7 @@ class HoldingsView(ft.Container):
 
         self.symbol_filter = ft.TextField(
             label="🔍 Symbol", expand=1,
-            hint_text="e.g. AAPL, TCS, INFY",
+            hint_text="e.g. ITC, TCS, INFY",
             text_style=ft.TextStyle(weight=ft.FontWeight.BOLD),
             bgcolor=ft.Colors.GREY_900,
             label_style=ft.TextStyle(color=ft.Colors.GREY_400)
@@ -76,19 +76,19 @@ class HoldingsView(ft.Container):
         def table_header(text, width=None, numeric=False):
             return ft.DataColumn(
                 ft.Container(
-                    ft.Text(text, weight=ft.FontWeight.BOLD, text_align=ft.TextAlign.CENTER if numeric else ft.TextAlign.LEFT, color=ft.Colors.BLUE_300),
+                    ft.Text(text, size=12, weight=ft.FontWeight.BOLD, text_align=ft.TextAlign.CENTER if numeric else ft.TextAlign.LEFT, color=ft.Colors.BLUE_300),
                     width=width,
                     alignment=ft.alignment.Alignment(0, 0) if numeric else ft.alignment.Alignment(-1, 0)
                 ), numeric=numeric
             )
 
-        self.col_widths = [30, 80, 160, 60, 90, 90, 80, 100, 70, 70, 70, 100, 80, 100, 120]
+        self.col_widths = [25, 115, 160, 80, 80, 80, 80, 100, 80, 80, 90, 100, 80, 80, 120]
         self.columns = [
-            ("#", self.col_widths[0], True), ("Symbol", self.col_widths[1], False), ("Name", self.col_widths[2], False),
+            ("#", self.col_widths[0], True), ("Symbol", self.col_widths[1], True), ("Name", self.col_widths[2], False),
             ("Qty", self.col_widths[3], True), ("Avg Prc ₹", self.col_widths[4], True), ("Mkt Prc ₹", self.col_widths[5], True),
             ("Daily Chg", self.col_widths[6], True), ("Flash PnL ₹", self.col_widths[7], True), ("Weight%", self.col_widths[8], True),
             ("XIRR%", self.col_widths[9], True), ("CAGR%", self.col_widths[10], True), ("Real PnL ₹", self.col_widths[11], True),
-            ("Fees ₹", self.col_widths[12], True), ("IV Signal", self.col_widths[13], False), ("Actions", self.col_widths[14], False),
+            ("Fees ₹", self.col_widths[12], True), ("IV Signal", self.col_widths[13], True), ("Actions", self.col_widths[14], False),
         ]
 
         self.header_table = ft.DataTable(
@@ -104,23 +104,23 @@ class HoldingsView(ft.Container):
             )
         
         self.table = ft.DataTable(
-            column_spacing=20, heading_row_height=0, 
+            column_spacing=20, heading_row_height=0,
             columns=[data_column(width=c[1], numeric=c[2]) for c in self.columns], rows=[]
         )
 
-        self.refresh_btn = ft.ElevatedButton("Refresh Prices", icon=ft.Icons.REFRESH, tooltip="Fetch latest market prices from yfinance")
+        self.refresh_btn = ft.ElevatedButton("Refresh", icon=ft.Icons.REFRESH, bgcolor=ft.Colors.DEEP_ORANGE_600, tooltip="Fetch latest market prices from yfinance")
         self.refresh_btn.on_click = self._handle_refresh_prices
         self.price_status = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
         self.loading_ring = ft.ProgressRing(width=20, height=20, stroke_width=2, visible=False)
         self.loading_status = ft.Text("", size=11, color=ft.Colors.GREY_400, italic=True)
 
         self.apply_btn = ft.ElevatedButton("Apply", icon=ft.Icons.FILTER_ALT, bgcolor=ft.Colors.BLUE, on_click=lambda e: self._apply_with_reload())
-        self.clear_btn = ft.ElevatedButton("Clear", icon=ft.Icons.CLEAR_ALL, on_click=self._clear_with_reload)
+        self.clear_btn = ft.ElevatedButton("Clear", icon=ft.Icons.CLEAR_ALL, bgcolor=ft.Colors.TEAL_600, on_click=self._clear_with_reload)
 
         # ✨ ENHANCEMENT: Use enhanced filter panel (Improvement #1)
         self.filter_panel = enhanced_filter_panel(
             self.broker_filter, self.symbol_filter, self.iv_filter, self.exclude_zero_qty_chk,
-            self.apply_btn, self.clear_btn
+            self.apply_btn, self.clear_btn, self.refresh_btn
         )
 
         # ✨ ENHANCEMENT: Stats card placeholder (Improvement #5)
@@ -149,6 +149,31 @@ class HoldingsView(ft.Container):
             ], expand=True), expand=True)
         ], spacing=12)
 
+    def _truncate_stock_name(self, name, max_chars=20):
+        """Truncate stock name to max_chars, keeping only whole words."""
+        # Convert to string and handle None/NaN values
+        if name is None or (isinstance(name, float) and pd.isna(name)):
+            return "—"
+        
+        name = str(name).strip()
+        
+        # If empty or dash, return as is
+        if not name or name == "—":
+            return name
+        
+        # If already short enough, return as is
+        if len(name) <= max_chars:
+            return name
+        
+        # Find the last whole word within max_chars
+        truncated = name[:max_chars]
+        last_space = truncated.rfind(' ')
+        
+        if last_space > 0:  # Keep at least some text before the space
+            return truncated[:last_space]
+        else:
+            # No space found, just truncate at max_chars
+            return truncated
 
     def _load_broker_options(self):
         import models.crud as crud
@@ -182,6 +207,13 @@ class HoldingsView(ft.Container):
         await asyncio.to_thread(fetch_and_update_market_data, symbols)
         from engine import rebuild_holdings
         rebuild_holdings()
+
+        # Invalidate Dashboard cache since market prices affect P&L and current values
+        if hasattr(self.app_state, 'views'):
+            try:
+                if self.app_state.views.get(0):  # Dashboard
+                    self.app_state.views[0].invalidate_cache()
+            except: pass
 
         self.refresh_btn.disabled = False
         show_toast(self.app_state.page, f"Updated {len(symbols)} prices ✓", color=ft.Colors.GREEN_600)
@@ -394,30 +426,26 @@ class HoldingsView(ft.Container):
             self.filter_feedback.color = ft.Colors.GREY_600
 
         def simple_cell(text, width=None, color=None, numeric=False, row_idx=0):
-            """Cell with width constraint, alternating background, and better styling."""
-            bg_color = alternating_row_color(row_idx)
+            """Cell with width constraint and better styling."""
             return ft.DataCell(
                 ft.Container(
-                    ft.Text(text, size=11, color=color or ft.Colors.WHITE, 
+                    ft.Text(text, size=13, color=color or ft.Colors.WHITE, weight=ft.FontWeight.W_500,
                            text_align=ft.TextAlign.RIGHT if numeric else ft.TextAlign.LEFT),
                     width=width,
                     alignment=ft.alignment.Alignment(0, 0) if numeric else ft.alignment.Alignment(-1, 0),
-                    bgcolor=bg_color,
-                    padding=ft.padding.symmetric(vertical=8, horizontal=4)
+                    padding=ft.padding.symmetric(vertical=10, horizontal=6)
                 )
             )
         
         def signal_cell(signal, width=None, row_idx=0):
-            """Status chip cell with width constraint and alternating background."""
+            """Status chip cell with width constraint."""
             sig_color = ft.Colors.GREEN_700 if signal == "ACCUMULATE" else (ft.Colors.RED_700 if signal == "REDUCE" else ft.Colors.GREY)
-            bg_color = alternating_row_color(row_idx)
             return ft.DataCell(
                 ft.Container(
                     status_chip(signal, sig_color),
                     width=width,
                     alignment=ft.alignment.Alignment(-1, 0),
-                    bgcolor=bg_color,
-                    padding=ft.padding.symmetric(vertical=8, horizontal=4)
+                    padding=ft.padding.symmetric(vertical=10, horizontal=6)
                 )
             )
 
@@ -457,6 +485,8 @@ class HoldingsView(ft.Container):
             
             r_broker, r_symbol = str(row_dict['broker']), str(row_dict['symbol'])
             stock_name = row_dict.get('stock_name', None) or "—"
+            # Truncate to 20 chars, keeping only whole words
+            stock_name = self._truncate_stock_name(stock_name)
 
             # ✨ ENHANCEMENT: Color-coded P&L values (Improvement #2)
             running_pnl_color = ft.Colors.GREEN_400 if running_pnl >= 0 else ft.Colors.RED_400
@@ -480,11 +510,10 @@ class HoldingsView(ft.Container):
                         ft.GestureDetector(
                             mouse_cursor=ft.MouseCursor.CLICK,
                             on_tap=lambda e, b=r_broker, s=r_symbol: self.show_drilldown_dialog(b, s),
-                            content=ft.Text(r_symbol, weight=ft.FontWeight.BOLD, size=12, color=ft.Colors.BLUE_400)
+                            content=ft.Text(r_symbol, weight=ft.FontWeight.BOLD, size=13, color=ft.Colors.BLUE_400)
                         ),
                         width=self.col_widths[1],
-                        bgcolor=alternating_row_color(row_idx),
-                        padding=ft.padding.symmetric(vertical=8, horizontal=4)
+                        padding=ft.padding.symmetric(vertical=10, horizontal=6)
                     )),
                     # ✨ ENHANCEMENT: Stock name with badge (Improvement #4) - simplified for table
                     simple_cell(stock_name, width=self.col_widths[2], row_idx=row_idx),
@@ -502,8 +531,7 @@ class HoldingsView(ft.Container):
                     ft.DataCell(ft.Container(
                         action_buttons,
                         width=self.col_widths[14],
-                        bgcolor=alternating_row_color(row_idx),
-                        padding=ft.padding.symmetric(vertical=4, horizontal=4),
+                        padding=ft.padding.symmetric(vertical=6, horizontal=4),
                         alignment=ft.alignment.Alignment(0, 0)
                     ))
                 ])
@@ -648,7 +676,10 @@ class HoldingsView(ft.Container):
 
             self._close_dialog(dlg)
             self.loading_ring.visible = True
-            self.loading_ring.update()
+            try:
+                self.loading_ring.update()
+            except Exception:
+                pass
             
             def bg_save_edit():
                 try:

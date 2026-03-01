@@ -57,7 +57,10 @@ class TradeHistoryView(ft.Container):
         self.broker_filter = ft.Dropdown(
             label="Broker", expand=1,
             options=[ft.dropdown.Option("All")],
-            value="All"
+            value="All",
+            label_style=ft.TextStyle(size=16, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_300),
+            dense=False,
+            content_padding=ft.padding.symmetric(horizontal=8, vertical=12)
         )
         self._load_broker_options()
 
@@ -66,7 +69,7 @@ class TradeHistoryView(ft.Container):
             hint_text="e.g. ITC",
             text_style=ft.TextStyle(weight=ft.FontWeight.BOLD),
             bgcolor=ft.Colors.GREY_900,
-            label_style=ft.TextStyle(color=ft.Colors.GREY_400)
+            label_style=ft.TextStyle(size=16, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_300)
         )
         self.symbol_filter.on_change = self._on_symbol_search  # Debounced search
         self.symbol_filter.on_submit = lambda e: self.load_data()  # Also search on Enter
@@ -78,7 +81,10 @@ class TradeHistoryView(ft.Container):
                 ft.dropdown.Option("BUY"),
                 ft.dropdown.Option("SELL"),
             ],
-            value="BUY"
+            value="BUY",
+            label_style=ft.TextStyle(size=16, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_300),
+            dense=False,
+            content_padding=ft.padding.symmetric(horizontal=8, vertical=12)
         )
 
         # Create date buttons with default date text
@@ -168,22 +174,34 @@ class TradeHistoryView(ft.Container):
 
         # Reorganized filter layout for better visibility - all controls in one row
         filter_row = ft.Row([
-            ft.Container(self.broker_filter, width=130),
-            ft.Container(self.symbol_filter, width=110),
-            ft.Container(self.type_filter, width=90),
-            ft.Container(self.start_date_btn, width=160),
-            ft.Container(self.end_date_btn, width=160),
+            ft.Container(self.broker_filter, width=120),
+            ft.Container(self.symbol_filter, width=98),
+            ft.Container(self.type_filter, width=98),
+            ft.Container(
+                content=ft.Column([
+                    ft.Text("Start Date", size=14, color=ft.Colors.GREY_400),
+                    self.start_date_btn
+                ], spacing=3, tight=True),
+                width=155
+            ),
+            ft.Container(
+                content=ft.Column([
+                    ft.Text("End Date", size=14, color=ft.Colors.GREY_400),
+                    self.end_date_btn
+                ], spacing=3, tight=True),
+                width=150
+            ),
             ft.ElevatedButton("Search", icon=ft.Icons.SEARCH, bgcolor=ft.Colors.BLUE, on_click=lambda e: self.load_data(_reload_brokers=False), width=115), 
-            ft.ElevatedButton("Clear", icon=ft.Icons.CLEAR_ALL, bgcolor=ft.Colors.GREY_600, on_click=self.clear_filters, width=110),
+            ft.ElevatedButton("Clear", icon=ft.Icons.CLEAR_ALL, bgcolor=ft.Colors.GREY_600, on_click=self.clear_filters, width=102),
             ft.ElevatedButton("Bulk Del", icon=ft.Icons.DELETE_SWEEP, bgcolor=ft.Colors.RED_600, on_click=self.handle_bulk_delete, width=125),
-            ft.ElevatedButton("Export", icon=ft.Icons.DOWNLOAD, tooltip="Export CSV", on_click=self.handle_export_click, width=115),
+            ft.ElevatedButton("Export", icon=ft.Icons.DOWNLOAD, tooltip="Export CSV", on_click=self.handle_export_click, width=112),
             ft.Container(expand=True),
             self.loading_ring, 
             self.loading_status
         ], 
         alignment=ft.MainAxisAlignment.START, 
         vertical_alignment=ft.CrossAxisAlignment.CENTER, 
-        spacing=8,
+        spacing=10,
         wrap=False,
         scroll=ft.ScrollMode.AUTO)
 
@@ -192,22 +210,31 @@ class TradeHistoryView(ft.Container):
         self.next_btn = ft.IconButton(icon=ft.Icons.CHEVRON_RIGHT, tooltip="Next Page", on_click=self.handle_next_page, disabled=True)
         pagination_row = ft.Row([self.prev_btn, self.page_text, self.next_btn], alignment=ft.MainAxisAlignment.CENTER)
 
+        # Store references to table rows for horizontal scroll management
+        self.table_row = ft.Row([self.table], scroll=ft.ScrollMode.ADAPTIVE)
+        self.summary_row = ft.Row([self.summary_table], scroll=ft.ScrollMode.ADAPTIVE)
+
         self.content = ft.Column([
             page_title("Trade History Details"),
             premium_card(ft.Column([
-                filter_row,
+                # Wrap your filter_row here:
+                ft.Container(
+                    content=filter_row, 
+                    height=90,  # Increased from 70 to give more vertical space
+                    padding=ft.padding.symmetric(vertical=10, horizontal=0)
+                ),
                 ft.Divider(color="#27F5B0"),
                 self.status_text,
                 ft.Container(
                     content=ft.Column([
-                        ft.Row([self.table], scroll=ft.ScrollMode.ADAPTIVE),
-                        ft.Row([self.summary_table], scroll=ft.ScrollMode.ADAPTIVE)
+                        self.table_row,
+                        self.summary_row
                     ], scroll=ft.ScrollMode.ADAPTIVE),
                     expand=True, clip_behavior=ft.ClipBehavior.ANTI_ALIAS
                 ),
                 pagination_row
             ]), expand=True)
-        ], spacing=24)
+        ], spacing=24) 
 
     # --- UNIVERSAL DIALOG / PICKER HELPERS ---
     def _open_dialog(self, dlg):
@@ -303,35 +330,45 @@ class TradeHistoryView(ft.Container):
 
     async def handle_start_date_click(self, e):
         # Ensure picker has current value before opening
-        if self._start_date:
-            try:
+        try:
+            if self._start_date:
                 self.start_date_picker.value = self._start_date
-            except Exception:
-                pass
+            else:
+                import datetime
+                self.start_date_picker.value = datetime.date.today()
+        except Exception as ex:
+            print(f"[ERROR] Failed to set start_date_picker value: {ex}")
         
-        if hasattr(self.app_state.page, 'open'):
-            self.app_state.page.open(self.start_date_picker)
-        else:
-            self.start_date_picker.open = True
-            try:
+        # Open the picker
+        try:
+            if hasattr(self.app_state.page, 'open'):
+                self.app_state.page.open(self.start_date_picker)
+            else:
+                self.start_date_picker.open = True
                 self.start_date_picker.update()
-            except Exception: pass
+        except Exception as ex:
+            print(f"[ERROR] Failed to open start_date_picker: {ex}")
 
     async def handle_end_date_click(self, e):
         # Ensure picker has current value before opening
-        if self._end_date:
-            try:
+        try:
+            if self._end_date:
                 self.end_date_picker.value = self._end_date
-            except Exception:
-                pass
+            else:
+                import datetime
+                self.end_date_picker.value = datetime.date.today()
+        except Exception as ex:
+            print(f"[ERROR] Failed to set end_date_picker value: {ex}")
         
-        if hasattr(self.app_state.page, 'open'):
-            self.app_state.page.open(self.end_date_picker)
-        else:
-            self.end_date_picker.open = True
-            try:
+        # Open the picker
+        try:
+            if hasattr(self.app_state.page, 'open'):
+                self.app_state.page.open(self.end_date_picker)
+            else:
+                self.end_date_picker.open = True
                 self.end_date_picker.update()
-            except Exception: pass
+        except Exception as ex:
+            print(f"[ERROR] Failed to open end_date_picker: {ex}")
 
     def _on_start_date_change(self, e):
         print(f"[TRADE_HISTORY] _on_start_date_change triggered, picker.value={self.start_date_picker.value}")
@@ -760,6 +797,15 @@ class TradeHistoryView(ft.Container):
             try:
                 self.table.update()
                 self.status_text.update()
+                # Scroll tables to the right using page.run_task to handle async coroutine
+                async def scroll_to_right():
+                    try:
+                        await self.table_row.scroll_to(offset=float('inf'), duration=0)
+                        await self.summary_row.scroll_to(offset=float('inf'), duration=0)
+                    except Exception:
+                        pass
+                if hasattr(self.app_state, 'page') and self.app_state.page:
+                    self.app_state.page.run_task(scroll_to_right)
             except Exception:
                 pass
             return
@@ -850,6 +896,15 @@ class TradeHistoryView(ft.Container):
             self.table.update()
             self.summary_table.update()
             self.status_text.update()
+            # Scroll tables to the right using page.run_task to handle async coroutine
+            async def scroll_to_right():
+                try:
+                    await self.table_row.scroll_to(offset=float('inf'), duration=0)
+                    await self.summary_row.scroll_to(offset=float('inf'), duration=0)
+                except Exception:
+                    pass
+            if hasattr(self.app_state, 'page') and self.app_state.page:
+                self.app_state.page.run_task(scroll_to_right)
         except Exception:
             pass
 
@@ -864,29 +919,46 @@ class TradeHistoryView(ft.Container):
         import threading
         from engine import rebuild_holdings
         
+        # Show loading state
+        self.loading_ring.visible = True
+        try:
+            self.loading_ring.update()
+        except Exception:
+            pass
+        
         # Clear calculation cache since data is changing
         self._calc_cache.clear()
         
-        crud.delete_trade(str(broker), str(trade_id)) 
-        self.show_snack("Trade deleted!")
+        try:
+            crud.delete_trade(str(broker), str(trade_id))
+            self.show_snack("Trade deleted!")
+        except Exception as ex:
+            self.loading_ring.visible = False
+            try:
+                self.loading_ring.update()
+            except Exception:
+                pass
+            self.show_snack(f"Error deleting trade: {str(ex)}", color=ft.Colors.RED_400)
+            return
         
         def bg_delete():
-            rebuild_holdings()
-            
-            # CRITICAL: Invalidate all view caches when trade deleted
-            if hasattr(self.app_state, 'views'):
-                try:
-                    if self.app_state.views.get(0):  # Dashboard
-                        self.app_state.views[0].invalidate_cache()
-                except: pass
-                try:
-                    if self.app_state.views.get(1):  # Holdings
-                        self.app_state.views[1].invalidate_cache()
-                except: pass
-            
-            async def finish():
-                self.load_data(_reload_brokers=False)
-            self.app_state.page.run_task(finish)
+            try:
+                rebuild_holdings()
+                
+                # CRITICAL: Invalidate all view caches when trade deleted
+                if hasattr(self.app_state, 'views'):
+                    try:
+                        if self.app_state.views.get(0):  # Dashboard
+                            self.app_state.views[0].invalidate_cache()
+                    except: pass
+                    try:
+                        if self.app_state.views.get(1):  # Holdings
+                            self.app_state.views[1].invalidate_cache()
+                    except: pass
+            finally:
+                async def finish():
+                    self.load_data(_reload_brokers=False)
+                self.app_state.page.run_task(finish)
         
         threading.Thread(target=bg_delete, daemon=True).start()
 
@@ -910,16 +982,27 @@ class TradeHistoryView(ft.Container):
         
         async def open_edit_date_picker(e):
             self._current_edit_date_tb = date_tb
-            try: self.edit_date_picker.value = pd.to_datetime(current_date).to_pydatetime()
-            except: pass
             
-            if hasattr(self.app_state.page, 'open'):
-                self.app_state.page.open(self.edit_date_picker)
-            else:
-                self.edit_date_picker.open = True
-                try:
-                    self.edit_date_picker.update()  # Targeted update on picker only
-                except Exception: pass
+            # Set the picker to show the current trade date
+            try:
+                if isinstance(current_date, str):
+                    parsed_date = pd.to_datetime(current_date).to_pydatetime()
+                else:
+                    parsed_date = current_date
+                self.edit_date_picker.value = parsed_date
+            except Exception as ex:
+                print(f"[ERROR] Failed to set edit_date_picker value: {ex}")
+                self.edit_date_picker.value = pd.to_datetime('today').to_pydatetime()
+            
+            # Open the date picker
+            try:
+                if hasattr(self.app_state.page, 'open'):
+                    self.app_state.page.open(self.edit_date_picker)
+                else:
+                    self.edit_date_picker.open = True
+                    self.edit_date_picker.update()
+            except Exception as ex:
+                print(f"[ERROR] Failed to open edit_date_picker: {ex}")
         
         date_btn = ft.IconButton(icon=ft.Icons.CALENDAR_MONTH, on_click=open_edit_date_picker, icon_color="#3B82F6")
         

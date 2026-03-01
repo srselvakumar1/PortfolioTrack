@@ -281,7 +281,14 @@ class PremiumSidebar(ft.Container):
             self._theme_dark = not self._theme_dark
             theme_btn.icon = ft.Icons.DARK_MODE if self._theme_dark else ft.Icons.LIGHT_MODE
             theme_btn.icon_color = "#FDB813" if not self._theme_dark else "#60A5FA"
-            theme_btn.update()
+            try:
+                theme_btn.update()
+            except Exception as ex:
+                print(f"[THEME] Toggle update error: {ex}")
+                try:
+                    self.update()
+                except:
+                    pass
 
         theme_btn = ft.IconButton(
             ft.Icons.DARK_MODE,

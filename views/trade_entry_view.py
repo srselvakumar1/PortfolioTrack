@@ -25,6 +25,8 @@ class TradeEntryView(ft.Container):
         )
         # Flet 0.81: FilePicker is a Service. Must be in page.overlay before calling pick_files().
         self.import_picker = ft.FilePicker()
+        # Remember last import folder
+        self._last_import_path = None
         
         # Create date button with Text control so we can update it
         self.date_text = ft.Text(today.strftime("%Y-%m-%d"), size=13)
@@ -91,7 +93,8 @@ class TradeEntryView(ft.Container):
         self.qty_input.on_change = _qty_change
         self.price_input.on_change = _price_change
 
-        self.preview_container = ft.Container(visible=False, expand=True)
+        # Modal dialog for import preview (instead of inline container)
+        self.preview_modal = None
         
         self.dupe_table = ft.DataTable(
             columns=[
@@ -217,7 +220,7 @@ class TradeEntryView(ft.Container):
                 ], spacing=12)
             ),
             self.dupe_container
-        ], expand=4, spacing=20)
+        ], expand=4, spacing=20)  # Removed preview_container - now using modal
         
         right_pane = ft.Column([
             # Transaction Summary Card
@@ -274,10 +277,7 @@ class TradeEntryView(ft.Container):
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     
                 ], spacing=12)
-            ),
-            
-            # Preview Container (for CSV import)
-            self.preview_container
+            )
         ], expand=8, spacing=16)
 
         self.content = ft.Column([
@@ -341,21 +341,29 @@ class TradeEntryView(ft.Container):
 
     def open_date_picker(self, e):
         # Sync picker value with current date before opening
-        if self.date_picker.value:
-            try:
+        try:
+            if self.date_picker.value:
                 # Extract date from picker value (could be datetime or date)
                 current_date = self.date_picker.value.date() if hasattr(self.date_picker.value, 'date') else self.date_picker.value
                 self.date_picker.value = current_date
-            except Exception:
-                pass
+            else:
+                # If no value set, use today
+                import datetime
+                self.date_picker.value = datetime.date.today()
+        except Exception as ex:
+            print(f"[ERROR] Failed to sync date_picker value: {ex}")
+            import datetime
+            self.date_picker.value = datetime.date.today()
         
-        if hasattr(self.app_state.page, 'open'):
-            self.app_state.page.open(self.date_picker)
-        else:
-            self.date_picker.open = True
-            try:
-                self.date_picker.update()  # Targeted update on picker only
-            except Exception: pass
+        # Open the date picker
+        try:
+            if hasattr(self.app_state.page, 'open'):
+                self.app_state.page.open(self.date_picker)
+            else:
+                self.date_picker.open = True
+                self.date_picker.update()
+        except Exception as ex:
+            print(f"[ERROR] Failed to open date_picker: {ex}")
 
     def on_date_change(self, e):
         print(f"[TRADE_ENTRY] on_date_change triggered, picker.value={self.date_picker.value}")
@@ -559,9 +567,15 @@ class TradeEntryView(ft.Container):
     async def handle_import_click(self, _):
         """Triggers the file picker for CSV import."""
         try:
+            # Use last imported directory if available, otherwise use home directory
+            initial_dir = None
+            if self._last_import_path and os.path.isdir(os.path.dirname(self._last_import_path)):
+                initial_dir = os.path.dirname(self._last_import_path)
+            
             files = await self.import_picker.pick_files(
                 allowed_extensions=["csv"],
-                allow_multiple=False
+                allow_multiple=False,
+                initial_directory=initial_dir
             )
         except Exception as e:
             print(f"FilePicker Error: {e}")
@@ -571,6 +585,8 @@ class TradeEntryView(ft.Container):
             return
 
         file_path = files[0].path
+        # Remember this folder for next time
+        self._last_import_path = file_path
         self.show_snack(f"Loading {os.path.basename(file_path)}...")
 
         try:
@@ -626,46 +642,89 @@ class TradeEntryView(ft.Container):
             self.preview_progress_bar = ft.ProgressBar(value=0.0, visible=False)
             self.preview_status_text = ft.Text("")
 
-            self.confirm_btn = ft.ElevatedButton("Confirm Import", on_click=self.confirm_import, bgcolor=ft.Colors.GREEN_600)
-            
-            preview_card = premium_card(
-                ft.Column([
-                    ft.Text(f"Found {len(df)} trades. Review before importing:", size=18, weight=ft.FontWeight.W_600),
-                    self.preview_broker_dropdown,
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Row([
-                                ft.DataTable(columns=[ft.DataColumn(ft.Text(c)) for c in ["#","Date","Sym","Type","Qty","Price","ID"]], rows=preview_rows)
-                            ], scroll=ft.ScrollMode.ADAPTIVE)
-                        ], scroll=ft.ScrollMode.AUTO),
-                        expand=True,
-                        border=ft.border.all(1, ft.Colors.with_opacity(0.1, ft.Colors.WHITE)),
-                        border_radius=8
-                    ),
-                    self.preview_status_text, 
-                    self.preview_progress_bar,
-                    ft.Row([
-                        ft.TextButton("Cancel", on_click=self.cancel_import),
-                        self.confirm_btn
-                    ], alignment=ft.MainAxisAlignment.END)
-                ], tight=True)
+            self.confirm_btn = ft.ElevatedButton(
+                "Confirm Import", 
+                on_click=self.confirm_import, 
+                bgcolor=ft.Colors.GREEN_600,
+                color=ft.Colors.WHITE,
+                width=140,
+                height=40
             )
-
-            self.preview_container.content = preview_card
-            self.preview_container.visible = True
-            # Only update the container, not full page
-            try:
-                self.preview_container.update()
-            except Exception: pass
+            
+            # Build preview table
+            preview_table = ft.DataTable(
+                columns=[ft.DataColumn(ft.Text(c, weight=ft.FontWeight.W_600, size=12)) for c in ["#","Date","Sym","Type","Qty","Price","ID"]], 
+                rows=preview_rows,
+                heading_row_color=ft.Colors.with_opacity(0.05, ft.Colors.BLUE),
+                heading_row_height=40,
+                data_row_min_height=32,
+                data_row_max_height=32
+            )
+            
+            # Create modal dialog for better visual appeal
+            self.preview_modal = ft.AlertDialog(
+                title=ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, size=28, color=ft.Colors.GREEN_400),
+                            ft.Column([
+                                ft.Text("Import Preview", size=22, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400),
+                                ft.Text(f"Found {len(df)} trades - Review before importing", size=12, color=ft.Colors.GREY_400)
+                            ], spacing=2)
+                        ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.START),
+                        ft.Divider(color=ft.Colors.with_opacity(0.2, ft.Colors.WHITE))
+                    ], spacing=8, tight=True),
+                    padding=20
+                ),
+                content=ft.Container(
+                    content=ft.Column([
+                        self.preview_broker_dropdown,
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Row([preview_table], scroll=ft.ScrollMode.ADAPTIVE)
+                            ], scroll=ft.ScrollMode.AUTO),
+                            expand=True,
+                            border=ft.border.all(1, ft.Colors.with_opacity(0.15, ft.Colors.WHITE)),
+                            border_radius=8,
+                            height=400
+                        ),
+                        self.preview_status_text,
+                        self.preview_progress_bar
+                    ], spacing=12, tight=False),
+                    width=900,
+                    height=500,
+                    padding=20
+                ),
+                actions=[
+                    ft.TextButton("Cancel", on_click=self.cancel_import, style=ft.ButtonStyle(color=ft.Colors.GREY_400)),
+                    ft.Container(width=8),  # Spacer
+                    self.confirm_btn
+                ],
+                actions_alignment=ft.MainAxisAlignment.END,
+                inset_padding=20,
+                actions_padding=20
+            )
+            
+            # Show the modal
+            if hasattr(self.app_state.page, 'open'):
+                self.app_state.page.open(self.preview_modal)
+            else:
+                self.app_state.page.show_dialog(self.preview_modal)
 
         except Exception as ex:
             self.show_snack(f"Error reading CSV: {str(ex)}", color=ft.Colors.RED_400)
 
     def cancel_import(self, e):
-        self.preview_container.visible = False
-        try:
-            self.preview_container.update()  # Targeted update on container only
-        except Exception: pass
+        # Close the modal dialog
+        if self.preview_modal:
+            try:
+                if hasattr(self.app_state.page, 'close'):
+                    self.app_state.page.close(self.preview_modal)
+                else:
+                    self.preview_modal.open = False
+                    self.preview_modal.update()
+            except Exception:
+                pass
         object.__setattr__(self, 'pending_import_df', None)
 
     async def confirm_import(self, e):
@@ -759,7 +818,16 @@ class TradeEntryView(ft.Container):
             
             # Show results on main thread
             async def finish():
-                self.preview_container.visible = False
+                # Close the import modal
+                if self.preview_modal:
+                    try:
+                        if hasattr(self.app_state.page, 'close'):
+                            self.app_state.page.close(self.preview_modal)
+                        else:
+                            self.preview_modal.open = False
+                            self.preview_modal.update()
+                    except Exception:
+                        pass
                 
                 if skipped > 0:
                     def _to_row(d_obj):

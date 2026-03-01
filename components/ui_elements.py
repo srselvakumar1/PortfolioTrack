@@ -130,14 +130,6 @@ def styled_modal_dialog(title: str, content: ft.Control, confirm_text: str = "Co
     )
 
 def alternating_row_color(row_index: int) -> str:
-    """Get background color for alternating row colors in tables.
-    
-    Args:
-        row_index: Row number (0-based)
-    
-    Returns:
-        Hex color code: alternates between lighter and slightly darker shades
-    """
     return "#333333" if row_index % 2 == 0 else "#2A2A2A"
 
 def create_column_tooltip_header(text: str, tooltip: str, width: int = None, numeric: bool = False) -> ft.DataColumn:
@@ -198,27 +190,27 @@ def holdings_stats_card(total_holdings: int, total_invested: float, current_valu
     return ft.Container(
         content=ft.Row([
             ft.Column([
-                ft.Text("Holdings", size=10, color=ft.Colors.GREY_500, weight=ft.FontWeight.W_600),
-                ft.Text(f"{total_holdings}", size=18, weight=ft.FontWeight.W_800, color=ft.Colors.BLUE_300),
+                ft.Text("Holdings", size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.W_600),
+                ft.Text(f"{total_holdings}", size=22, weight=ft.FontWeight.W_800, color=ft.Colors.BLUE_300),
             ], spacing=2),
             ft.VerticalDivider(width=1),
             ft.Column([
-                ft.Text("Invested", size=10, color=ft.Colors.GREY_500, weight=ft.FontWeight.W_600),
-                ft.Text(f"₹ {total_invested:,.0f}", size=14, weight=ft.FontWeight.W_700, color=ft.Colors.CYAN_300),
+                ft.Text("Invested", size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.W_600),
+                ft.Text(f"₹ {total_invested:,.0f}", size=16, weight=ft.FontWeight.W_700, color=ft.Colors.CYAN_300),
             ], spacing=2),
             ft.VerticalDivider(width=1),
             ft.Column([
-                ft.Text("Current Value", size=10, color=ft.Colors.GREY_500, weight=ft.FontWeight.W_600),
-                ft.Text(f"₹ {current_value:,.0f}", size=14, weight=ft.FontWeight.W_700, color=ft.Colors.WHITE),
+                ft.Text("Current Value", size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.W_600),
+                ft.Text(f"₹ {current_value:,.0f}", size=16, weight=ft.FontWeight.W_700, color=ft.Colors.WHITE),
             ], spacing=2),
             ft.VerticalDivider(width=1),
             ft.Column([
-                ft.Text("Total P&L", size=10, color=ft.Colors.GREY_500, weight=ft.FontWeight.W_600),
-                ft.Text(f"{pnl_icon} ₹ {total_pnl:,.0f}", size=14, weight=ft.FontWeight.W_700, color=pnl_color),
+                ft.Text("Total P&L", size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.W_600),
+                ft.Text(f"{pnl_icon} ₹ {total_pnl:,.0f}", size=16, weight=ft.FontWeight.W_700, color=pnl_color),
             ], spacing=2),
             ft.Container(expand=True),
             ft.Container(
-                content=ft.Text(filter_status, size=10, weight=ft.FontWeight.W_700, color=filter_color),
+                content=ft.Text(filter_status, size=11, weight=ft.FontWeight.W_700, color=filter_color),
                 bgcolor=ft.Colors.with_opacity(0.2, filter_color),
                 padding=ft.padding.symmetric(horizontal=8, vertical=4),
                 border_radius=6
@@ -231,7 +223,7 @@ def holdings_stats_card(total_holdings: int, total_invested: float, current_valu
     )
 
 
-def enhanced_filter_panel(broker_dropdown, symbol_input, iv_dropdown, exclude_checkbox, apply_btn, clear_btn, active_count: int = 0) -> ft.Container:
+def enhanced_filter_panel(broker_dropdown, symbol_input, iv_dropdown, exclude_checkbox, apply_btn, clear_btn, refresh_btn=None, active_count: int = 0) -> ft.Container:
     """Enhanced filter panel with visual organization (Improvements #1, #9)"""
     filter_badge = ft.Container(
         content=ft.Text(str(active_count), size=9, weight=ft.FontWeight.W_700, color=ft.Colors.WHITE),
@@ -240,6 +232,11 @@ def enhanced_filter_panel(broker_dropdown, symbol_input, iv_dropdown, exclude_ch
         alignment=ft.alignment.Alignment(0, 0),
         visible=active_count > 0
     )
+    
+    # Build the button row
+    button_row = [apply_btn, clear_btn]
+    if refresh_btn:
+        button_row.append(refresh_btn)
     
     return ft.Container(
         content=ft.Column([
@@ -252,7 +249,7 @@ def enhanced_filter_panel(broker_dropdown, symbol_input, iv_dropdown, exclude_ch
             ft.Row([
                 broker_dropdown, symbol_input, iv_dropdown, exclude_checkbox,
                 ft.Container(expand=True),
-                apply_btn, clear_btn
+                *button_row
             ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         ], spacing=8),
         padding=ft.padding.all(12),

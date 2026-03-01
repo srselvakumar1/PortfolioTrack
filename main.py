@@ -31,6 +31,7 @@ def main(page: ft.Page):
     page.theme = ft.Theme(font_family="Inter", color_scheme_seed=ft.Colors.YELLOW)
 
     app_state = AppState(page)
+    app_state.views = {}  # Initialize views dictionary for cross-view cache invalidation
     
     # Keyboard shortcuts handler
     def handle_keyboard(e):
@@ -83,6 +84,7 @@ def main(page: ft.Page):
             v = view_classes[idx](app_state)
             v.expand = True
             view_cache[idx] = v
+            app_state.views[idx] = v  # Also register in app_state for cross-view cache invalidation
         return view_cache[idx]
 
     def _prefetch_critical_views():
