@@ -802,6 +802,7 @@ class TradeHistoryView(ft.Container):
             return
 
         self.status_text.visible = False
+        print(f"[TRADE_HISTORY] Set status_text.visible = False")
         start_idx = (self.current_page - 1) * self.page_size
         end_idx = start_idx + self.page_size
         page_df = df.iloc[start_idx:end_idx]
@@ -861,7 +862,7 @@ class TradeHistoryView(ft.Container):
             rows = []
 
         self.table.rows = rows
-        print(f"[TRADE_HISTORY] Setting table.rows to {len(rows)} rows")
+        print(f"[TRADE_HISTORY] Set self.table.rows to {len(rows)} DataRow objects")
         
         # Summary Row Calculation
         total_qty = df['qty'].sum()
@@ -893,6 +894,7 @@ class TradeHistoryView(ft.Container):
         self._update_pagination_ui()
         # Only update table/summary/status, not entire page (much faster)
         try:
+            print(f"[TRADE_HISTORY] Before update: table.columns={len(self.table.columns)}, table.rows={len(self.table.rows)}, summary_table.rows={len(self.summary_table.rows)}, status_text.visible={self.status_text.visible}")
             print(f"[TRADE_HISTORY] Updating table with {len(rows)} rows")
             # Only update if control is already on the page; during initial load it won't be
             if hasattr(self.table, 'page') and self.table.page:
