@@ -193,7 +193,7 @@ class HoldingsView(ft.Container):
     async def _handle_refresh_prices(self, e):
         from engine import fetch_and_update_market_data
         with db_session() as conn:
-            symbols = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM holdings WHERE qty > 0").fetchall()]
+            symbols = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM holdings").fetchall()]
         if not symbols:
             show_toast(self.app_state.page, "No holdings to fetch", color=ft.Colors.ORANGE_700)
             return
