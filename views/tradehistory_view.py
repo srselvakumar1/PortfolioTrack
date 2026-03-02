@@ -268,6 +268,7 @@ class TradeHistoryView(ft.Container):
 
     def did_mount(self):
         """Lifecycle hook."""
+        print(f"[TRADE_HISTORY] did_mount called: table columns={len(self.table.columns) if hasattr(self.table, 'columns') else 'N/A'}, table rows={len(self.table.rows) if hasattr(self.table, 'rows') else 'N/A'}, table.visible={self.table.visible}")
         for dp in [self.start_date_picker, self.end_date_picker]:
             if dp not in self.app_state.page.overlay:
                 self.app_state.page.overlay.append(dp)
@@ -901,12 +902,26 @@ class TradeHistoryView(ft.Container):
             print(f"[TRADE_HISTORY] Before update: table.columns={len(self.table.columns)}, table.rows={len(self.table.rows)}, summary_table.rows={len(self.summary_table.rows)}, status_text.visible={self.status_text.visible}")
             print(f"[TRADE_HISTORY] Set table.rows to {len(rows)} DataRow objects")
             
-            # Use app_state.page.update() to propagate changes - this works even if table isn't directly accessible
+            # Try to update table directly first
+            try:
+                self.table.update()
+                print(f"[TRADE_HISTORY] Direct table.update() successful!")
+            except RuntimeError as e:
+                print(f"[TRADE_HISTORY] Direct table.update() failed (table not on page yet): {e}")
+                
+            # Also try summary table
+            try:
+                self.summary_table.update()
+                print(f"[TRADE_HISTORY] Direct summary_table.update() successful!")
+            except RuntimeError as e:
+                print(f"[TRADE_HISTORY] Direct summary_table.update() failed: {e}")
+            
+            # Use app_state.page.update() to propagate changes
             if hasattr(self.app_state, 'page') and self.app_state.page:
                 self.app_state.page.update()
-                print(f"[TRADE_HISTORY] Page update successful!")
+                print(f"[TRADE_HISTORY] Page update() called!")
             else:
-                print(f"[TRADE_HISTORY] App state page not available, skipping update")
+                print(f"[TRADE_HISTORY] App state page not available")
             
             # Scroll tables to the right using page.run_task to handle async coroutine
             async def scroll_to_right():
