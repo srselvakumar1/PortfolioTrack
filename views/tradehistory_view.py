@@ -190,7 +190,7 @@ class TradeHistoryView(ft.Container):
                     ft.Text("End Date", size=13, color=ft.Colors.GREY_400),
                     self.end_date_btn
                 ], spacing=2, tight=True),
-                width=150
+                width=153
             ),
             ft.ElevatedButton("Search", icon=ft.Icons.SEARCH, bgcolor=ft.Colors.BLUE, on_click=lambda e: self.load_data(_reload_brokers=False), width=115), 
             ft.ElevatedButton("Clear", icon=ft.Icons.CLEAR_ALL, bgcolor=ft.Colors.GREY_600, on_click=self.clear_filters, width=102),
@@ -841,16 +841,16 @@ class TradeHistoryView(ft.Container):
                         cells=[
                             ft.DataCell(chk),
                             ft.DataCell(ft.Text(str(row_num), text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_500)),
-                            ft.DataCell(ft.Text(row_data['date'])),
+                            ft.DataCell(ft.Text(row_data['date'], color=ft.Colors.WHITE)),
                             ft.DataCell(ft.Text(str(trade_id), size=11, color=ft.Colors.GREY_400)),
-                            ft.DataCell(ft.Text(row_data['symbol'], weight=ft.FontWeight.BOLD)),
+                            ft.DataCell(ft.Text(row_data['symbol'], weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)),
                             ft.DataCell(ft.Text(row_data['type'], color=trade_color)),
-                            ft.DataCell(ft.Text(f"{row_data['qty']}", text_align=ft.TextAlign.RIGHT)),
-                            ft.DataCell(ft.Text(f"₹{row_data['price']:,.2f}", text_align=ft.TextAlign.RIGHT)),
+                            ft.DataCell(ft.Text(f"{row_data['qty']}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.WHITE)),
+                            ft.DataCell(ft.Text(f"₹{row_data['price']:,.2f}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.WHITE)),
                             ft.DataCell(ft.Text(f"{row_data['run_qty']}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.BLUE_200)),
                             ft.DataCell(ft.Text(f"₹{row_data['avg_cost']:,.2f}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.AMBER_200)),
                             ft.DataCell(ft.Text(pnl_display, text_align=ft.TextAlign.RIGHT, color=pnl_color)),
-                            ft.DataCell(ft.Text(f"₹{row_data['fee']:,.2f}", text_align=ft.TextAlign.RIGHT)),
+                            ft.DataCell(ft.Text(f"₹{row_data['fee']:,.2f}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.WHITE)),
                             ft.DataCell(ft.Row([
                                 ft.IconButton(ft.Icons.EDIT, tooltip="Edit Trade", icon_size=16, icon_color=ft.Colors.BLUE_400, on_click=lambda e, r=row_data: self.open_edit_dialog(r)),
                                 ft.IconButton(ft.Icons.DELETE_OUTLINE, tooltip="Delete Trade", icon_size=16, icon_color=ft.Colors.RED_400, on_click=lambda e, b=row_data['broker'], tid=trade_id: self.delete_trade(b, tid))
@@ -884,7 +884,7 @@ class TradeHistoryView(ft.Container):
                 ft.DataCell(ft.Text("")), # ID
                 ft.DataCell(ft.Text("")), # Symbol
                 ft.DataCell(ft.Text("")), # Type
-                ft.DataCell(ft.Text(f"Total Qty: {total_qty:,.0f}", weight=ft.FontWeight.BOLD, text_align=ft.TextAlign.RIGHT, size=13)),
+                ft.DataCell(ft.Text(f"Total Qty: {total_qty:,.0f}", weight=ft.FontWeight.BOLD, text_align=ft.TextAlign.RIGHT, size=13, color=ft.Colors.WHITE)),
                 ft.DataCell(ft.Text("")), # Price
                 ft.DataCell(ft.Text("")), # Run Qty
                 ft.DataCell(ft.Text("")), # Avg Cost
