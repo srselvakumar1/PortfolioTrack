@@ -118,7 +118,8 @@ class TradeHistoryView(ft.Container):
                 ft.DataColumn(ft.Text("Fees ₹", text_align=ft.TextAlign.RIGHT), numeric=True),
                 ft.DataColumn(ft.Text("Actions", text_align=ft.TextAlign.CENTER))
             ],
-            rows=[]
+            rows=[],
+            expand=True
         )
 
         self.summary_table = ft.DataTable(
@@ -181,14 +182,14 @@ class TradeHistoryView(ft.Container):
                 content=ft.Column([
                     ft.Text("Start Date", size=13, color=ft.Colors.GREY_400),
                     self.start_date_btn
-                ], spacing=3, tight=True),
-                width=155
+                ], spacing=2, tight=True),
+                width=153
             ),
             ft.Container(
                 content=ft.Column([
                     ft.Text("End Date", size=13, color=ft.Colors.GREY_400),
                     self.end_date_btn
-                ], spacing=3, tight=True),
+                ], spacing=2, tight=True),
                 width=150
             ),
             ft.ElevatedButton("Search", icon=ft.Icons.SEARCH, bgcolor=ft.Colors.BLUE, on_click=lambda e: self.load_data(_reload_brokers=False), width=115), 
@@ -211,8 +212,8 @@ class TradeHistoryView(ft.Container):
         pagination_row = ft.Row([self.prev_btn, self.page_text, self.next_btn], alignment=ft.MainAxisAlignment.CENTER)
 
         # Store references to table rows for horizontal scroll management
-        self.table_row = ft.Row([self.table], scroll=ft.ScrollMode.ADAPTIVE)
-        self.summary_row = ft.Row([self.summary_table], scroll=ft.ScrollMode.ADAPTIVE)
+        self.table_row = ft.Row([self.table], scroll=ft.ScrollMode.ADAPTIVE, expand=True)
+        self.summary_row = ft.Row([self.summary_table], scroll=ft.ScrollMode.ADAPTIVE, expand=True)
 
         self.content = ft.Column([
             page_title("Trade History Details"),
