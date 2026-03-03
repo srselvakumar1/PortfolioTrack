@@ -270,6 +270,15 @@ class HoldingsView(ft.Container):
             _reload_brokers: Reload broker options if True
             use_cache: If True and cached data exists with same filters, display instantly
         """
+        # Thread guard: if called from a background thread, redispatch to the UI thread
+        if threading.current_thread() is not threading.main_thread():
+            page = getattr(self.app_state, 'page', None)
+            if page:
+                async def _dispatch():
+                    self.load_data(_reload_brokers=_reload_brokers, use_cache=use_cache)
+                page.run_task(_dispatch)
+            return
+
         current_filters = self._get_current_filters()
         
         # OPTIMIZATION: Smart caching - only reload if filters actually changed
@@ -291,7 +300,8 @@ class HoldingsView(ft.Container):
             self.loading_status.update()
             self.apply_btn.update()
         except Exception: pass
-        self._fetch_and_render()
+        # Run heavy DB work on a background thread to keep the UI responsive
+        threading.Thread(target=self._fetch_and_render, daemon=True).start()
 
     def _close_dialog(self, dlg=None):
         try:
@@ -306,9 +316,11 @@ class HoldingsView(ft.Container):
         except: pass
 
     def _fetch_and_render(self):
+        # Snapshot filter values (safe to read from background thread — they are already set)
         f_broker = self.broker_filter.value if self.broker_filter.value else "All"
         f_symbol = self.symbol_filter.value.strip().upper() if self.symbol_filter.value else ""
         f_signal = self.iv_filter.value if self.iv_filter.value else "All"
+        exclude_zero = self.exclude_zero_qty_chk.value
 
         # OPTIMIZATION: Get total count for pagination
         count_query = "SELECT COUNT(*) as cnt FROM holdings h WHERE 1=1"
@@ -320,7 +332,7 @@ class HoldingsView(ft.Container):
             count_query += " AND h.symbol LIKE ? COLLATE NOCASE"
             count_params.append(f"%{f_symbol}%")
         
-        # Also get total portfolio value in separate efficient aggregation query
+        # Also get total portfolio value in the same connection
         total_value_query = '''
             SELECT SUM(h.qty * COALESCE(NULLIF(m.current_price, 0), h.avg_price)) as total_value
             FROM holdings h
@@ -334,21 +346,11 @@ class HoldingsView(ft.Container):
         if f_symbol:
             total_value_query += " AND h.symbol LIKE ? COLLATE NOCASE"
             total_value_params.append(f"%{f_symbol}%")
-        if self.exclude_zero_qty_chk.value: 
+        if exclude_zero: 
             count_query += " AND h.qty > 0"
             total_value_query += " AND h.qty > 0"
         
-        with db_session() as conn:
-            total_count_result = conn.execute(count_query, count_params).fetchone()
-            self.total_records = total_count_result[0] if total_count_result else 0
-            
-            # Get total portfolio value
-            total_val_result = conn.execute(total_value_query, total_value_params).fetchone()
-            total_portfolio_value = total_val_result[0] if total_val_result and total_val_result[0] else 1.0
-            object.__setattr__(self, 'total_portfolio_value', total_portfolio_value)
-
-        # OPTIMIZATION: Fetch ONLY current page + filters using LIMIT/OFFSET at DB level
-        # This avoids loading entire portfolio into memory
+        # OPTIMIZATION: Single db_session for all three queries instead of opening DB twice
         start_idx = (self.current_page - 1) * self.page_size
         
         query = '''
@@ -374,26 +376,35 @@ class HoldingsView(ft.Container):
             else:
                 query += " AND a.action_signal = ?"
                 params.append(f_signal)
-        if self.exclude_zero_qty_chk.value: query += " AND h.qty > 0"
-
-        # Add LIMIT/OFFSET at DB level for pagination
+        if exclude_zero: query += " AND h.qty > 0"
         query += f" LIMIT {self.page_size} OFFSET {start_idx}"
 
         with db_session() as conn:
+            total_count_result = conn.execute(count_query, count_params).fetchone()
+            self.total_records = total_count_result[0] if total_count_result else 0
+            total_val_result = conn.execute(total_value_query, total_value_params).fetchone()
+            total_portfolio_value = total_val_result[0] if total_val_result and total_val_result[0] else 1.0
+            object.__setattr__(self, 'total_portfolio_value', total_portfolio_value)
             df = pd.read_sql_query(query, conn, params=params)
 
         # Pre-calculate current_value for display
         df['current_value'] = df['qty'] * df['market_price'].where(df['market_price'] > 0, df['avg_price'])
-
         object.__setattr__(self, 'current_df', df)
-        
-        self.loading_ring.visible = False
-        self.loading_status.value = ""
-        self.apply_btn.disabled = False
-        try:
-            self.loading_status.update()
-        except Exception: pass
-        self.render_table()
+
+        # Dispatch UI updates back to the main thread
+        async def _finish_on_ui():
+            self.loading_ring.visible = False
+            self.loading_status.value = ""
+            self.apply_btn.disabled = False
+            try:
+                self.loading_ring.update()
+                self.loading_status.update()
+                self.apply_btn.update()
+            except Exception: pass
+            self.render_table()
+        page = getattr(self.app_state, 'page', None)
+        if page:
+            page.run_task(_finish_on_ui)
 
     def render_table(self):
         if self.current_df is None: return
