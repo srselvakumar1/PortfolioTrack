@@ -27,7 +27,6 @@ def initialize_database(reset=False):
         cursor = conn.cursor()
 
         if reset:
-            print("Resetting database tables (except brokers)...")
             cursor.execute("DROP TABLE IF EXISTS trades")
             cursor.execute("DROP TABLE IF EXISTS holdings")
             cursor.execute("DROP TABLE IF EXISTS marketdata")
@@ -132,13 +131,10 @@ def initialize_database(reset=False):
             cursor.execute("PRAGMA table_info(holdings)")
             columns = [col[1] for col in cursor.fetchall()]
             if 'running_pnl' not in columns:
-                print("[DB] Migrating: Adding running_pnl column to holdings table...")
                 cursor.execute("ALTER TABLE holdings ADD COLUMN running_pnl REAL DEFAULT 0.0")
-                # Initialize running_pnl = realized_pnl for existing records
                 cursor.execute("UPDATE holdings SET running_pnl = realized_pnl")
-                print("[DB] Migration complete: running_pnl column added and initialized")
-        except Exception as e:
-            print(f"[DB] Migration warning: {e}")
+        except Exception:
+            pass
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_broker ON trades(broker)")

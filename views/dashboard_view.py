@@ -4,6 +4,7 @@ from components.ui_elements import page_title, premium_card, info_metric, status
 from engine import get_dashboard_metrics, get_metrics_by_broker, get_top_worst_performers, get_actionable_insights, get_tax_harvesting_opportunities, fetch_and_update_market_data
 from database import db_session
 import threading
+import concurrent.futures
 
 class DashboardView(ft.Container):
     def __init__(self, app_state: AppState):
@@ -134,164 +135,163 @@ class DashboardView(ft.Container):
         # OPTIMIZATION: Only load on first visit - don't reload on every navigation
         if self._data_loaded:
             return
-        
         self._data_loaded = True
-        metrics = get_dashboard_metrics()
-        performers = get_top_worst_performers(limit=3)
-        insights = get_actionable_insights()
-        harvesting = get_tax_harvesting_opportunities(min_loss_amount=500.0)
+        # Spawn background thread so the UI thread is never blocked waiting for DB queries.
+        # All 4 queries run concurrently inside the thread; UI updates dispatched back via
+        # page.run_task() once data is ready.
+        threading.Thread(target=self._fetch_and_render, daemon=True).start()
 
-        # Update metric values only (no control recreation)
-        self.val_text.value = f"₹{metrics['total_value']:,.2f}"
-        self.inv_text.value = f"₹{metrics['total_invested']:,.2f}"
-        
-        pnl = metrics['overall_pnl']
-        self.pnl_text.value = f"₹{pnl:,.2f}"
-        self.pnl_text.color = ft.Colors.GREEN if pnl >= 0 else ft.Colors.RED
-        
-        upnl = metrics['unrealized_pnl']
-        self.unrealized_pnl_text.value = f"₹{upnl:,.2f}"
-        self.unrealized_pnl_text.color = ft.Colors.GREEN if upnl >= 0 else ft.Colors.RED
-        
-        rpnl = metrics['realized_pnl']
-        self.realized_pnl_text.value = f"₹{rpnl:,.2f}"
-        self.realized_pnl_text.color = ft.Colors.GREEN if rpnl >= 0 else ft.Colors.RED
-        
-        rloss = metrics['realized_loss']
-        self.realized_loss_text.value = f"₹{rloss:,.2f}"
-        self.realized_loss_text.color = ft.Colors.RED 
-        
-        xirr = metrics['overall_xirr']
-        self.xirr_text.value = f"{xirr:,.2f}%"
-        self.xirr_text.color = ft.Colors.GREEN if xirr >= 0 else ft.Colors.RED
-        
-        cagr = metrics['overall_cagr']
-        self.cagr_text.value = f"{cagr:,.2f}%"
-        self.cagr_text.color = ft.Colors.GREEN if cagr >= 0 else ft.Colors.RED
-        
-        # ✨ UPDATE SIDEBAR STATS with portfolio values
+    def _fetch_and_render(self):
+        """Background thread: fetch all dashboard data concurrently, then update UI."""
         try:
-            from components.navigation import PremiumSidebar
-            sidebar = getattr(self.app_state, '_sidebar', None)
-            if sidebar and isinstance(sidebar, PremiumSidebar):
-                sidebar.set_stats(
-                    portfolio_value=metrics['total_value'],
-                    invested=metrics['total_invested'],
-                    pnl=metrics['overall_pnl']
-                )
-        except Exception as e:
-            pass  # Silently handle if sidebar not available
-        
-        # Build UI tree once on first load, only update content on subsequent loads
-        if not self._ui_built:
-            self.header_row = ft.Row([
-                page_title("Dashboard"),
-                ft.Row([
-                    self.refresh_progress,
-                    ft.IconButton(ft.Icons.REFRESH, tooltip="Refresh Market Data", on_click=self.on_refresh_data, icon_color=ft.Colors.WHITE)
-                ], alignment=ft.MainAxisAlignment.END)
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-            
-            self.kpi_row_1 = ft.Row([
-                premium_card(
-                    info_metric("Total Value", self.val_text, ft.Icons.ACCOUNT_BALANCE_WALLET), 
-                    expand=True, 
-                    on_click=lambda _: self.show_broker_breakdown_dialog("Total Value", "total_value", top_pos=100)
-                ),
-                premium_card(
-                    info_metric("Total Invested", self.inv_text, ft.Icons.ACCOUNT_BALANCE), 
-                    expand=True,
-                    on_click=lambda _: self.show_broker_breakdown_dialog("Total Invested", "total_invested", top_pos=100)
-                ),
-                premium_card(
-                    info_metric("Overall P&L", self.pnl_text, ft.Icons.TRENDING_UP), 
-                    expand=True,
-                    on_click=lambda _: self.show_broker_breakdown_dialog("Overall P&L", "overall_pnl", top_pos=100)
-                ),
-            ])
-            
-            self.kpi_row_2 = ft.Row([
-                premium_card(
-                    info_metric("Unrealized P&L", self.unrealized_pnl_text, ft.Icons.SHOW_CHART), 
-                    expand=True,
-                    on_click=lambda _: self.show_broker_breakdown_dialog("Unrealized P&L", "unrealized_pnl", top_pos=260)
-                ),
-                premium_card(
-                    info_metric("Realized P&L", self.realized_pnl_text, ft.Icons.MONETIZATION_ON), 
-                    expand=True,
-                    on_click=lambda _: self.show_broker_breakdown_dialog("Realized P&L", "realized_pnl", top_pos=260)
-                ),
-                premium_card(
-                    info_metric("Realized Loss", self.realized_loss_text, ft.Icons.MONEY_OFF), 
-                    expand=True,
-                    on_click=lambda _: self.show_broker_breakdown_dialog("Realized Loss", "realized_loss", top_pos=260)
-                ),
-                premium_card(
-                    info_metric("Overall XIRR", self.xirr_text, ft.Icons.AUTO_GRAPH), 
-                    expand=True,
-                    on_click=lambda _: self.show_broker_breakdown_dialog("Overall XIRR", "overall_xirr", is_currency=False, top_pos=260)
-                ),
-                premium_card(
-                    info_metric("Overall CAGR", self.cagr_text, ft.Icons.PERCENT), 
-                    expand=True,
-                    on_click=lambda _: self.show_broker_breakdown_dialog("Overall CAGR", "overall_cagr", is_currency=False, top_pos=260)
-                ),
-            ])
-            
-            self.performers_row = ft.Row([
-                premium_card(ft.Column([], expand=True), expand=True),
-                premium_card(ft.Column([], expand=True), expand=True),
-            ], alignment=ft.MainAxisAlignment.START)
-            
-            self.insights_row = ft.Row([
-                premium_card(ft.Column([], expand=True), expand=True),
-                premium_card(ft.Column([], expand=True), expand=True),
-            ], alignment=ft.MainAxisAlignment.START)
-            
-            self.content_col.controls = [
-                self.header_row,
-                self.kpi_row_1,
-                self.kpi_row_2,
-                self.performers_row,
-                self.insights_row,
-                ft.Container(height=40)
-            ]
-            self._ui_built = True
-        
-        # Update only the content of data rows (not recreating controls)
-        top_perf = self.build_performers_list("Top Performers", performers["top"], is_top=True)
-        worst_perf = self.build_performers_list("Worst Performers", performers["worst"], is_top=False)
-        insights_col = self.build_insights_list("Actionable Insights", insights)
-        harvesting_col = self.build_harvesting_list("Tax Harvesting Ops", harvesting)
-        
-        self.performers_row.controls[0].content = top_perf
-        self.performers_row.controls[1].content = worst_perf
-        self.insights_row.controls[0].content = insights_col
-        self.insights_row.controls[1].content = harvesting_col
-        
-        try:
-            # Update each container after changing content
-            self.performers_row.controls[0].update()
-            self.performers_row.controls[1].update()
-            self.insights_row.controls[0].update()
-            self.insights_row.controls[1].update()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+                f_metrics    = ex.submit(get_dashboard_metrics)
+                f_performers = ex.submit(get_top_worst_performers, 3)
+                f_insights   = ex.submit(get_actionable_insights)
+                f_harvesting = ex.submit(get_tax_harvesting_opportunities, 500.0)
+                metrics    = f_metrics.result()
+                performers = f_performers.result()
+                insights   = f_insights.result()
+                harvesting = f_harvesting.result()
         except Exception:
-            pass
-        
-        try:
-            if self.app_state.page:
-                self.update()
-        except Exception:
-            pass
+            return
+
+        async def _finish_on_ui():
+            # Update metric text values (controls already exist, no recreation)
+            self.val_text.value = f"₹{metrics['total_value']:,.2f}"
+            self.inv_text.value = f"₹{metrics['total_invested']:,.2f}"
+
+            pnl = metrics['overall_pnl']
+            self.pnl_text.value = f"₹{pnl:,.2f}"
+            self.pnl_text.color = ft.Colors.GREEN if pnl >= 0 else ft.Colors.RED
+
+            upnl = metrics['unrealized_pnl']
+            self.unrealized_pnl_text.value = f"₹{upnl:,.2f}"
+            self.unrealized_pnl_text.color = ft.Colors.GREEN if upnl >= 0 else ft.Colors.RED
+
+            rpnl = metrics['realized_pnl']
+            self.realized_pnl_text.value = f"₹{rpnl:,.2f}"
+            self.realized_pnl_text.color = ft.Colors.GREEN if rpnl >= 0 else ft.Colors.RED
+
+            rloss = metrics['realized_loss']
+            self.realized_loss_text.value = f"₹{rloss:,.2f}"
+            self.realized_loss_text.color = ft.Colors.RED
+
+            xirr = metrics['overall_xirr']
+            self.xirr_text.value = f"{xirr:,.2f}%"
+            self.xirr_text.color = ft.Colors.GREEN if xirr >= 0 else ft.Colors.RED
+
+            cagr = metrics['overall_cagr']
+            self.cagr_text.value = f"{cagr:,.2f}%"
+            self.cagr_text.color = ft.Colors.GREEN if cagr >= 0 else ft.Colors.RED
+
+            # Update sidebar stats
+            try:
+                from components.navigation import PremiumSidebar
+                sidebar = getattr(self.app_state, '_sidebar', None)
+                if sidebar and isinstance(sidebar, PremiumSidebar):
+                    sidebar.set_stats(
+                        portfolio_value=metrics['total_value'],
+                        invested=metrics['total_invested'],
+                        pnl=metrics['overall_pnl']
+                    )
+            except Exception:
+                pass
+
+            # Build UI tree once on first load
+            if not self._ui_built:
+                self.header_row = ft.Row([
+                    page_title("Dashboard"),
+                    ft.Row([
+                        self.refresh_progress,
+                        ft.IconButton(ft.Icons.REFRESH, tooltip="Refresh Market Data", on_click=self.on_refresh_data, icon_color=ft.Colors.WHITE)
+                    ], alignment=ft.MainAxisAlignment.END)
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+                self.kpi_row_1 = ft.Row([
+                    premium_card(
+                        info_metric("Total Value", self.val_text, ft.Icons.ACCOUNT_BALANCE_WALLET),
+                        expand=True,
+                        on_click=lambda _: self.show_broker_breakdown_dialog("Total Value", "total_value", top_pos=100)
+                    ),
+                    premium_card(
+                        info_metric("Total Invested", self.inv_text, ft.Icons.ACCOUNT_BALANCE),
+                        expand=True,
+                        on_click=lambda _: self.show_broker_breakdown_dialog("Total Invested", "total_invested", top_pos=100)
+                    ),
+                    premium_card(
+                        info_metric("Overall P&L", self.pnl_text, ft.Icons.TRENDING_UP),
+                        expand=True,
+                        on_click=lambda _: self.show_broker_breakdown_dialog("Overall P&L", "overall_pnl", top_pos=100)
+                    ),
+                ])
+
+                self.kpi_row_2 = ft.Row([
+                    premium_card(
+                        info_metric("Unrealized P&L", self.unrealized_pnl_text, ft.Icons.SHOW_CHART),
+                        expand=True,
+                        on_click=lambda _: self.show_broker_breakdown_dialog("Unrealized P&L", "unrealized_pnl", top_pos=260)
+                    ),
+                    premium_card(
+                        info_metric("Realized P&L", self.realized_pnl_text, ft.Icons.MONETIZATION_ON),
+                        expand=True,
+                        on_click=lambda _: self.show_broker_breakdown_dialog("Realized P&L", "realized_pnl", top_pos=260)
+                    ),
+                    premium_card(
+                        info_metric("Realized Loss", self.realized_loss_text, ft.Icons.MONEY_OFF),
+                        expand=True,
+                        on_click=lambda _: self.show_broker_breakdown_dialog("Realized Loss", "realized_loss", top_pos=260)
+                    ),
+                    premium_card(
+                        info_metric("Overall XIRR", self.xirr_text, ft.Icons.AUTO_GRAPH),
+                        expand=True,
+                        on_click=lambda _: self.show_broker_breakdown_dialog("Overall XIRR", "overall_xirr", is_currency=False, top_pos=260)
+                    ),
+                    premium_card(
+                        info_metric("Overall CAGR", self.cagr_text, ft.Icons.PERCENT),
+                        expand=True,
+                        on_click=lambda _: self.show_broker_breakdown_dialog("Overall CAGR", "overall_cagr", is_currency=False, top_pos=260)
+                    ),
+                ])
+
+                self.performers_row = ft.Row([
+                    premium_card(ft.Column([], expand=True), expand=True),
+                    premium_card(ft.Column([], expand=True), expand=True),
+                ], alignment=ft.MainAxisAlignment.START)
+
+                self.insights_row = ft.Row([
+                    premium_card(ft.Column([], expand=True), expand=True),
+                    premium_card(ft.Column([], expand=True), expand=True),
+                ], alignment=ft.MainAxisAlignment.START)
+
+                self.content_col.controls = [
+                    self.header_row,
+                    self.kpi_row_1,
+                    self.kpi_row_2,
+                    self.performers_row,
+                    self.insights_row,
+                    ft.Container(height=40)
+                ]
+                self._ui_built = True
+
+            # Swap content of the 4 panel cards
+            self.performers_row.controls[0].content = self.build_performers_list("Top Performers", performers["top"], is_top=True)
+            self.performers_row.controls[1].content = self.build_performers_list("Worst Performers", performers["worst"], is_top=False)
+            self.insights_row.controls[0].content = self.build_insights_list("Actionable Insights", insights)
+            self.insights_row.controls[1].content = self.build_harvesting_list("Tax Harvesting Ops", harvesting)
+
+            try:
+                self.update()  # Single call updates the full dashboard tree
+            except Exception:
+                pass
+
+        page = getattr(self.app_state, 'page', None)
+        if page:
+            page.run_task(_finish_on_ui)
 
     def invalidate_cache(self):
         """Clear all caches when external data changes (broker deleted, portfolio wiped)."""
         self._data_loaded = False
-        # Force reload next time this view is accessed
-        try:
-            self.load_data()
-        except Exception:
-            pass  # Silently handle if view not fully initialized
 
     def build_performers_list(self, title, data, is_top):
         color = ft.Colors.GREEN if is_top else ft.Colors.RED

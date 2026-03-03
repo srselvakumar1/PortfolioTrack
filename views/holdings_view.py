@@ -253,15 +253,11 @@ class HoldingsView(ft.Container):
         self.load_data(_reload_brokers=False)
 
     def invalidate_cache(self):
-        """Clear all caches when external data changes (broker deleted, portfolio wiped)."""
+        """Mark cache stale — fresh DB query will run next time this view is navigated to.
+        Does NOT trigger an immediate load (the view may not even be visible)."""
         self._data_loaded = False
         self._cached_filters = None
         self.current_df = None
-        # Force reload next time this view is accessed
-        try:
-            self.load_data(_reload_brokers=True, use_cache=False)
-        except Exception:
-            pass  # Silently handle if view not fully initialized
 
     def load_data(self, _reload_brokers=True, use_cache=True):
         """Load data with smart filter-aware caching.

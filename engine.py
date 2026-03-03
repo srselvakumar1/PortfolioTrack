@@ -200,8 +200,7 @@ def _fetch_single_ticker(yf_sym: str, orig_sym: str, now: str):
         
         return mkt_row, asset_row
     
-    except Exception as e:
-        print(f"Error fetching data for {orig_sym}: {e}")
+    except Exception:
         # Return a safe blank record so the app doesn't crash on this symbol
         mkt_row = (orig_sym, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, '', '', '', now)
         asset_row = (orig_sym, 0.0, "N/A", 0.0, 0.0, 0.0, now)
@@ -354,6 +353,29 @@ def rebuild_holdings():
     new_metrics = get_dashboard_metrics(force_refresh=True)
     save_dashboard_metrics(new_metrics)
     _invalidate_metrics_cache()
+
+
+_holdings_built_this_session = False
+
+def rebuild_holdings_if_needed():
+    """Skip the expensive startup rebuild if holdings are already populated.
+    Holdings stay current because rebuild_holdings() is called after every trade
+    mutation, so a non-empty holdings table means data is already fresh."""
+    global _holdings_built_this_session
+    if _holdings_built_this_session:
+        return
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM holdings LIMIT 1")
+            has_data = cursor.fetchone() is not None
+            if has_data:
+                _holdings_built_this_session = True
+                return
+    except Exception:
+        pass
+    rebuild_holdings()
+    _holdings_built_this_session = True
 
 
 # ── Metric Retrievers ────────────────────────────────────────────────────────

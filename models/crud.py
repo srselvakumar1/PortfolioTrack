@@ -5,29 +5,11 @@ from database import db_session
 # Database operations now use the db_session() context manager for clean connections.
 
 def add_trade(broker: str, date: str, symbol: str, trade_type: str, qty: float, price: float, fee: float, trade_id: str):
-    print(f"\n[CRUD.ADD_TRADE] ========== Adding trade ==========")
-    print(f"[CRUD.ADD_TRADE] broker={broker}")
-    print(f"[CRUD.ADD_TRADE] date={date}")
-    print(f"[CRUD.ADD_TRADE] symbol={symbol}")
-    print(f"[CRUD.ADD_TRADE] type={trade_type}")
-    print(f"[CRUD.ADD_TRADE] qty={qty}")
-    print(f"[CRUD.ADD_TRADE] price={price}")
-    print(f"[CRUD.ADD_TRADE] fee={fee}")
-    print(f"[CRUD.ADD_TRADE] trade_id={trade_id}")
-    
     sql = 'INSERT INTO trades (trade_id, broker, date, symbol, type, qty, price, fee) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     params = (trade_id, broker, date, symbol, trade_type, qty, price, fee)
-    print(f"[CRUD.ADD_TRADE] SQL: {sql}")
-    print(f"[CRUD.ADD_TRADE] Params: {params}")
-    
     with db_session() as conn:
         cursor = conn.cursor()
-        try:
-            cursor.execute(sql, params)
-            print(f"[CRUD.ADD_TRADE] ✓ Trade inserted successfully")
-        except Exception as ex:
-            print(f"[CRUD.ADD_TRADE] ✗ ERROR: {ex}")
-            raise
+        cursor.execute(sql, params)
 
 def update_trade(broker: str, trade_id: str, date: str, symbol: str, trade_type: str, qty: float, price: float, fee: float):
     with db_session() as conn:

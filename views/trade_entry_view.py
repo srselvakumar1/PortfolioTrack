@@ -350,8 +350,7 @@ class TradeEntryView(ft.Container):
                 # If no value set, use today
                 import datetime
                 self.date_picker.value = datetime.date.today()
-        except Exception as ex:
-            print(f"[ERROR] Failed to sync date_picker value: {ex}")
+        except Exception:
             import datetime
             self.date_picker.value = datetime.date.today()
         
@@ -362,33 +361,19 @@ class TradeEntryView(ft.Container):
             else:
                 self.date_picker.open = True
                 self.date_picker.update()
-        except Exception as ex:
-            print(f"[ERROR] Failed to open date_picker: {ex}")
+        except Exception:
+            pass
 
     def on_date_change(self, e):
-        print(f"[TRADE_ENTRY] on_date_change triggered, picker.value={self.date_picker.value}")
         if self.date_picker.value:
-            # Extract date from picker value (could be datetime or date)
             new_date = self.date_picker.value.date() if hasattr(self.date_picker.value, 'date') else self.date_picker.value
             new_text = new_date.strftime("%Y-%m-%d")
-            print(f"[TRADE_ENTRY] Updating date to: {new_text}")
             self.date_text.value = new_text
-            
-            # Update UI to show new date
             try:
                 self.date_text.update()
-                print("[TRADE_ENTRY] date_text.update() succeeded")
-            except Exception as ex:
-                print(f"[TRADE_ENTRY] date_text.update() failed: {ex}")
-            
-            try:
-                if hasattr(self.app_state, 'page') and self.app_state.page:
-                    self.app_state.page.update()
-                    print("[TRADE_ENTRY] app_state.page.update() succeeded")
-                else:
-                    print("[TRADE_ENTRY] app_state.page is not available")
-            except Exception as ex:
-                print(f"[TRADE_ENTRY] app_state.page.update() failed: {ex}")
+            except Exception:
+                pass
+            # date_text.update() above already sent the change — no page.update() needed
 
     def load_data(self):
         brokers = crud.get_all_brokers()
@@ -396,8 +381,7 @@ class TradeEntryView(ft.Container):
         if brokers:
             self.broker_dropdown.value = brokers[0]
         try:
-            if self.app_state.page:
-                self.update()
+            self.broker_dropdown.update()  # Only the dropdown changed — no need to repaint the whole view
         except Exception:
             pass
 
@@ -460,12 +444,10 @@ class TradeEntryView(ft.Container):
 
     def save_trade(self, e):
         try:
-            print("\n[SAVE_TRADE] ========== Starting trade save ==========")
             broker = self.broker_dropdown.value
             date = self.date_text.value
             symbol = self.symbol_input.value.strip().upper()
             t_type = self.type_radio.value
-            print(f"[SAVE_TRADE] Inputs - Broker: {broker}, Date: {date}, Symbol: {symbol}, Type: {t_type}")
             
             # Validate broker
             if not broker:
@@ -504,16 +486,11 @@ class TradeEntryView(ft.Container):
                 raise ValueError("Please select trade type (BUY/SELL)")
             
             fee = calculate_trade_fees(t_type, qty, price, is_delivery=True)
-            print(f"[SAVE_TRADE] Calculated fee: ₹{fee}")
- 
+
             import time
             timestamp = int(time.time() * 1000)
             manual_id = f"MT_{date.replace('-', '')}_{timestamp}"
-            print(f"[SAVE_TRADE] Generated trade ID: {manual_id}")
-            print(f"[SAVE_TRADE] Calling crud.add_trade...")
-
             crud.add_trade(broker, date, symbol, t_type, qty, price, fee, manual_id)
-            print(f"[SAVE_TRADE] ✓ crud.add_trade succeeded")
             
             # Reset form fields after successful save
             self.symbol_input.value = ""
@@ -559,9 +536,6 @@ class TradeEntryView(ft.Container):
             
             threading.Thread(target=finish_refresh, daemon=True).start()
         except Exception as ex:
-            import traceback
-            print(f"[SAVE_TRADE] ✗ EXCEPTION: {str(ex)}")
-            print(f"[SAVE_TRADE] Traceback:\n{traceback.format_exc()}")
             self.show_snack(f"Error: {str(ex)}", color=ft.Colors.RED_600)
 
     async def handle_import_click(self, _):
@@ -577,8 +551,7 @@ class TradeEntryView(ft.Container):
                 allow_multiple=False,
                 initial_directory=initial_dir
             )
-        except Exception as e:
-            print(f"FilePicker Error: {e}")
+        except Exception:
             return
 
         if not files or not files[0].path:

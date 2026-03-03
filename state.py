@@ -19,5 +19,5 @@ class AppState:
         """Standardized way to refresh the active page safely."""
         try:
             self.page.update()
-        except Exception as e:
-            print(f"Failed to refresh UI: {e}")
+        except Exception:
+            pass

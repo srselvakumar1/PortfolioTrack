@@ -34,6 +34,9 @@ class TradeHistoryView(ft.Container):
         # Cache for pre-calculated running stats to avoid re-computation on every filter change
         self._calc_cache = {}
         self._cache_key = None
+        # Summary metrics cache — computed once after data load, reused on every page flip
+        self._cached_summary = {}
+        self._summary_dirty = False
         
         # Data caching: store loaded data and filters to avoid re-querying on nav
         self._data_loaded = False
@@ -233,11 +236,55 @@ class TradeHistoryView(ft.Container):
             expand=True
         )
 
-        self.summary_qty_buy_value  = ft.Text("Buy: 0",    size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_700)
-        self.summary_qty_sell_value  = ft.Text("Sell: 0",    size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_700)
-        self.summary_pnl_value       = ft.Text("₹0.00",   size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_700)
-        self.summary_fees_buy_value  = ft.Text("Buy: ₹0.00", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_700)
-        self.summary_fees_sell_value = ft.Text("Sell: ₹0.00", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_700 )
+        # Pre-built row pool: 25 stable DataRow objects reused on every page flip.
+        # Avoids creating/GC-ing 325 new Flet objects per page navigation — only
+        # property values are updated in-place, so Flet sends a tiny delta instead
+        # of a full tree replacement.
+        self._row_pool = []
+        for _ in range(self.page_size):
+            _chk      = ft.Checkbox(value=False)
+            _t_num    = ft.Text("", size=11, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_500)
+            _t_date   = ft.Text("", color=ft.Colors.WHITE)
+            _t_id     = ft.Text("", size=11, color=ft.Colors.GREY_400)
+            _t_sym    = ft.Text("", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)
+            _t_type   = ft.Text("", color=ft.Colors.WHITE)
+            _t_qty    = ft.Text("", text_align=ft.TextAlign.RIGHT, color=ft.Colors.WHITE)
+            _t_price  = ft.Text("", text_align=ft.TextAlign.RIGHT, color=ft.Colors.WHITE)
+            _t_rqty   = ft.Text("", text_align=ft.TextAlign.RIGHT, color=ft.Colors.BLUE_200)
+            _t_avg    = ft.Text("", text_align=ft.TextAlign.RIGHT, color=ft.Colors.AMBER_200)
+            _t_pnl    = ft.Text("", text_align=ft.TextAlign.RIGHT, color=ft.Colors.GREY_400)
+            _t_fee    = ft.Text("", text_align=ft.TextAlign.RIGHT, color=ft.Colors.WHITE)
+            _btn_edit = ft.IconButton(ft.Icons.EDIT, tooltip="Edit Trade", icon_size=16, icon_color=ft.Colors.BLUE_400)
+            _btn_del  = ft.IconButton(ft.Icons.DELETE_OUTLINE, tooltip="Delete Trade", icon_size=16, icon_color=ft.Colors.RED_400)
+            _drow = ft.DataRow(cells=[
+                ft.DataCell(_chk),
+                ft.DataCell(_t_num),
+                ft.DataCell(_t_date),
+                ft.DataCell(_t_id),
+                ft.DataCell(_t_sym),
+                ft.DataCell(_t_type),
+                ft.DataCell(_t_qty),
+                ft.DataCell(_t_price),
+                ft.DataCell(_t_rqty),
+                ft.DataCell(_t_avg),
+                ft.DataCell(_t_pnl),
+                ft.DataCell(_t_fee),
+                ft.DataCell(ft.Row([_btn_edit, _btn_del], spacing=0)),
+            ])
+            self._row_pool.append({
+                'row': _drow, 'chk': _chk,
+                't_num': _t_num, 't_date': _t_date, 't_id': _t_id,
+                't_sym': _t_sym, 't_type': _t_type, 't_qty': _t_qty,
+                't_price': _t_price, 't_rqty': _t_rqty, 't_avg': _t_avg,
+                't_pnl': _t_pnl, 't_fee': _t_fee,
+                'btn_edit': _btn_edit, 'btn_del': _btn_del,
+            })
+
+        self.summary_qty_buy_value  = ft.Text("Buy: 0",    size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400)
+        self.summary_qty_sell_value  = ft.Text(" |   Sell: 0",    size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_400)
+        self.summary_pnl_value       = ft.Text("₹0.00",   size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_400)
+        self.summary_fees_buy_value  = ft.Text("Buy: ₹0.00", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400)
+        self.summary_fees_sell_value = ft.Text(" |   Sell: ₹0.00", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_400)
 
         def _pill(label, label_color, *controls, bg_color, border_color):
             return ft.Container(
@@ -256,16 +303,16 @@ class TradeHistoryView(ft.Container):
         _sep = lambda: ft.Text("|", size=11, color=ft.Colors.GREY_700)
 
         self.summary_strip = ft.Row([
-            _pill("Qty",  ft.Colors.GREY_400,
+            _pill("Total Qty",  ft.Colors.GREY_400,
                   self.summary_qty_buy_value,  _sep(), self.summary_qty_sell_value,
                   bg_color=ft.Colors.BLUE_400,  border_color=ft.Colors.BLUE_400),
-            _pill("PnL",  ft.Colors.GREY_400,
+            _pill("Running PnL",  ft.Colors.GREY_400,
                   self.summary_pnl_value,
                   bg_color=ft.Colors.GREEN_400, border_color=ft.Colors.GREEN_400),
-            _pill("Fees", ft.Colors.GREY_400,
+            _pill("Total Fees", ft.Colors.GREY_400,
                   self.summary_fees_buy_value, _sep(), self.summary_fees_sell_value,
                   bg_color=ft.Colors.AMBER_400, border_color=ft.Colors.AMBER_400),
-        ], spacing=8)
+        ], spacing=10)
 
         self.status_text = ft.Text("Loading trades with default filters...", italic=True, color=ft.Colors.GREY_500)
         self.loading_ring = ft.ProgressRing(width=20, height=20, stroke_width=2, visible=False)
@@ -364,6 +411,14 @@ class TradeHistoryView(ft.Container):
         ], spacing=24) 
 
     # --- UNIVERSAL DIALOG / PICKER HELPERS ---
+    def _open_picker(self, picker):
+        """Open a date picker — compatible with both old and new Flet APIs."""
+        if hasattr(self.app_state.page, 'open'):
+            self.app_state.page.open(picker)
+        else:
+            picker.open = True
+            self.app_state.page.update()
+
     def _open_dialog(self, dlg):
         if hasattr(self.app_state.page, 'open'):
             self.app_state.page.open(dlg)
@@ -395,7 +450,6 @@ class TradeHistoryView(ft.Container):
 
     def did_mount(self):
         """Lifecycle hook."""
-        print(f"[TRADE_HISTORY] did_mount called: table columns={len(self.table.columns) if hasattr(self.table, 'columns') else 'N/A'}, table rows={len(self.table.rows) if hasattr(self.table, 'rows') else 'N/A'}, table.visible={self.table.visible}")
         for dp in [self.start_date_picker, self.end_date_picker]:
             if dp not in self.app_state.page.overlay:
                 self.app_state.page.overlay.append(dp)
@@ -457,19 +511,42 @@ class TradeHistoryView(ft.Container):
         self._search_timer.start()
 
     def handle_start_date_click(self, e):
-        self.start_date_picker.value = datetime.combine(
-            self._start_date if self._start_date else datetime.now().date(),
-            datetime.min.time()
-        )
-        # page.open() sends ALL pending dirty state in one roundtrip — no separate update() needed
-        self.app_state.page.open(self.start_date_picker)
+        target_date = self._start_date if self._start_date else datetime.now().date()
+        target_datetime = datetime.combine(target_date, datetime.min.time())
+        
+        # Force Flet to recognize a state change by clearing it first
+        self.start_date_picker.value = None
+        try:
+            self.start_date_picker.update()
+        except:
+            pass
+            
+        self.start_date_picker.value = target_datetime
+        try:
+            self.start_date_picker.update()
+        except:
+            pass
+            
+        self._open_picker(self.start_date_picker)
 
     def handle_end_date_click(self, e):
-        self.end_date_picker.value = datetime.combine(
-            self._end_date if self._end_date else datetime.now().date(),
-            datetime.min.time()
-        )
-        self.app_state.page.open(self.end_date_picker)
+        target_date = self._end_date if self._end_date else datetime.now().date()
+        target_datetime = datetime.combine(target_date, datetime.min.time())
+        
+        # Force Flet to recognize a state change by clearing it first
+        self.end_date_picker.value = None
+        try:
+            self.end_date_picker.update()
+        except:
+            pass
+            
+        self.end_date_picker.value = target_datetime
+        try:
+            self.end_date_picker.update()
+        except:
+            pass
+            
+        self._open_picker(self.end_date_picker)
 
     def _on_start_date_change(self, e):
         selected_val = e.control.value if e and getattr(e, 'control', None) else self.start_date_picker.value
@@ -490,8 +567,8 @@ class TradeHistoryView(ft.Container):
                 async def deferred_reload():
                     try:
                         self.load_data(_reload_brokers=False, use_cache=False)
-                    except Exception as ex:
-                        print(f"[TRADE_HISTORY] Error loading data after date change: {ex}")
+                    except Exception:
+                        pass
                 if hasattr(self.app_state, 'page') and self.app_state.page:
                     self.app_state.page.run_task(deferred_reload)
 
@@ -514,8 +591,8 @@ class TradeHistoryView(ft.Container):
                 async def deferred_reload():
                     try:
                         self.load_data(_reload_brokers=False, use_cache=False)
-                    except Exception as ex:
-                        print(f"[TRADE_HISTORY] Error loading data after date change: {ex}")
+                    except Exception:
+                        pass
                 if hasattr(self.app_state, 'page') and self.app_state.page:
                     self.app_state.page.run_task(deferred_reload)
 
@@ -639,17 +716,13 @@ class TradeHistoryView(ft.Container):
         self._open_dialog(dlg)
 
     def invalidate_cache(self):
-        """Clear all caches when external data changes (broker deleted, portfolio wiped)."""
+        """Mark cache stale — fresh DB query will run next time this view is navigated to.
+        Does NOT trigger an immediate load (the view may not even be visible)."""
         self._calc_cache.clear()
         self._data_loaded = False
         self._cached_df = None
         self._cached_filters = None
         self.current_df = None
-        # Force reload next time this view is accessed
-        try:
-            self.load_data(_reload_brokers=True, use_cache=False)
-        except Exception:
-            pass  # Silently handle if view not fully initialized
 
     def clear_filters(self, e):
         self.broker_filter.value = "All"
@@ -737,47 +810,48 @@ class TradeHistoryView(ft.Container):
         threading.Thread(target=self._fetch_and_render, daemon=True).start()
 
     def _fetch_and_render(self):
-        query = """
-            SELECT t.trade_id, t.date, t.symbol, t.type, t.qty, t.price, t.fee, t.broker
-            FROM trades t
-            WHERE 1=1
-        """
-        params = []
         f_broker = self.broker_filter.value
         f_symbol = self.symbol_filter.value.strip().upper() if self.symbol_filter.value else ""
         f_type = self.type_filter.value
 
-        if f_broker and f_broker != "All":
-            query += " AND t.broker = ?"
-            params.append(f_broker)
-        if f_symbol:
-            query += " AND t.symbol LIKE ? COLLATE NOCASE"
-            params.append(f"%{f_symbol}%")
-        if f_type and f_type != "All":
-            query += " AND t.type = ?"
-            params.append(f_type)
-        if self._start_date:
-            query += " AND date(t.date) >= date(?)"
-            params.append(self._start_date.strftime('%Y-%m-%d'))
-        if self._end_date:
-            query += " AND date(t.date) <= date(?)"
-            params.append(self._end_date.strftime('%Y-%m-%d'))
-
-        # Add ORDER BY for chronological calculations
-        query += " ORDER BY t.date ASC"
-        
-        with db_session() as conn:
-            df = pd.read_sql_query(query, conn, params=params)
-
-        # Create cache key from current filters
-        cache_key = (f_broker, f_symbol, f_type, 
+        # Build cache key FIRST — if we have a hit, skip the DB entirely
+        cache_key = (f_broker, f_symbol, f_type,
                      self._start_date.strftime('%Y-%m-%d') if self._start_date else None,
                      self._end_date.strftime('%Y-%m-%d') if self._end_date else None)
-        
-        # Check if we've already calculated for these filters
+
         if cache_key in self._calc_cache:
+            # Cache hit: skip DB query and skip running-stats calculation
             calculated_data = self._calc_cache[cache_key]
         else:
+            # Cache miss: hit the DB exactly once, compute stats, then cache
+            query = """
+                SELECT t.trade_id, t.date, t.symbol, t.type, t.qty, t.price, t.fee, t.broker
+                FROM trades t
+                WHERE 1=1
+            """
+            params = []
+
+            if f_broker and f_broker != "All":
+                query += " AND t.broker = ?"
+                params.append(f_broker)
+            if f_symbol:
+                query += " AND t.symbol LIKE ? COLLATE NOCASE"
+                params.append(f"%{f_symbol}%")
+            if f_type and f_type != "All":
+                query += " AND t.type = ?"
+                params.append(f_type)
+            if self._start_date:
+                query += " AND date(t.date) >= date(?)"
+                params.append(self._start_date.strftime('%Y-%m-%d'))
+            if self._end_date:
+                query += " AND date(t.date) <= date(?)"
+                params.append(self._end_date.strftime('%Y-%m-%d'))
+
+            query += " ORDER BY t.date ASC"
+
+            with db_session() as conn:
+                df = pd.read_sql_query(query, conn, params=params)
+
             # Optimized calculation using pandas operations where possible
             df['qty'] = df['qty'].astype(float)
             df['price'] = df['price'].astype(float)
@@ -842,6 +916,29 @@ class TradeHistoryView(ft.Container):
         df = pd.DataFrame(calculated_data)
         object.__setattr__(self, 'current_df', df)
         self.total_records = len(df)
+
+        # Pre-compute summary metrics here so render_table never runs pandas on page flip
+        if not df.empty:
+            type_col = df['type'].astype(str).str.upper()
+            buy_mask = type_col == 'BUY'
+            sell_mask = type_col == 'SELL'
+            total_qty_buy   = float(df.loc[buy_mask, 'qty'].sum())
+            total_qty_sell  = float(df.loc[sell_mask, 'qty'].sum())
+            total_fees_buy  = float(df.loc[buy_mask, 'fee'].sum())
+            total_fees_sell = float(df.loc[sell_mask, 'fee'].sum())
+            total_pnl       = float(df.groupby('symbol')['running_pnl'].last().sum())
+        else:
+            total_qty_buy = total_qty_sell = total_fees_buy = total_fees_sell = total_pnl = 0.0
+        pnl_color = ft.Colors.GREEN if total_pnl > 0 else (ft.Colors.RED if total_pnl < 0 else ft.Colors.WHITE)
+        self._cached_summary = {
+            'qty_buy':   f"Buy: {total_qty_buy:,.0f}",
+            'qty_sell':  f"|   Sell: {total_qty_sell:,.0f}",
+            'pnl':       f"₹{total_pnl:,.2f}",
+            'pnl_color': pnl_color,
+            'fees_buy':  f"Buy: ₹{total_fees_buy:,.2f}",
+            'fees_sell': f"|   Sell: ₹{total_fees_sell:,.2f}",
+        }
+        self._summary_dirty = True
         # Dispatch all UI updates back to the main thread from the background thread
         async def _finish_on_ui():
             self.loading_ring.visible = False
@@ -889,78 +986,62 @@ class TradeHistoryView(ft.Container):
         start_idx = (self.current_page - 1) * self.page_size
         end_idx = start_idx + self.page_size
         page_df = df.iloc[start_idx:end_idx]
-        rows = []
-        try:
-            for i, row in enumerate(page_df.itertuples(index=False), start=1):
-                row_dict = row._asdict()
-                trade_id = str(row_dict.get('trade_id', ''))
-                row_num = start_idx + i
-                row_type = row_dict['type']
-                trade_color = ft.Colors.GREEN if row_type == 'BUY' else ft.Colors.RED
 
-                is_selected = trade_id in self.selected_trades
-                chk = ft.Checkbox(value=is_selected, on_change=lambda e, tid=trade_id: self.handle_row_select(tid, e.control.value))
+        # Populate pre-built row pool in-place — no new Flet objects created per page flip.
+        # Flet receives only property-value deltas instead of a full 325-object tree replacement.
+        actual_count = len(page_df)
+        for i, (slot, row) in enumerate(zip(self._row_pool, page_df.itertuples(index=False))):
+            row_dict    = row._asdict()
+            trade_id    = str(row_dict.get('trade_id', ''))
+            row_num     = start_idx + i + 1
+            row_type    = str(row_dict['type']).upper()
+            trade_color = ft.Colors.GREEN if row_type == 'BUY' else ft.Colors.RED
+            is_selected = trade_id in self.selected_trades
+            pnl_val     = float(row_dict['running_pnl'])
+            pnl_color   = ft.Colors.GREEN_400 if pnl_val > 0 else (ft.Colors.RED_400 if pnl_val < 0 else ft.Colors.GREY_400)
+            pnl_display = f"₹{pnl_val:,.2f}" if row_type == 'SELL' else "—"
+            broker      = str(row_dict['broker'])
+            row_data    = {
+                'trade_id': trade_id, 'date': str(row_dict['date']), 'symbol': str(row_dict['symbol']),
+                'type': row_type, 'qty': float(row_dict['qty']), 'price': float(row_dict['price']),
+                'fee': float(row_dict.get('fee', 0.0)), 'run_qty': float(row_dict['run_qty']),
+                'avg_cost': float(row_dict['avg_cost']), 'running_pnl': pnl_val, 'broker': broker
+            }
+            drow = slot['row']
+            drow.color    = alternating_row_color(row_num)
+            drow.selected = is_selected
+            slot['chk'].value     = is_selected
+            slot['chk'].on_change = lambda e, tid=trade_id: self.handle_row_select(tid, e.control.value)
+            slot['t_num'].value   = str(row_num)
+            slot['t_date'].value  = row_data['date']
+            slot['t_id'].value    = trade_id
+            slot['t_sym'].value   = row_data['symbol']
+            slot['t_type'].value  = row_type
+            slot['t_type'].color  = trade_color
+            slot['t_qty'].value   = f"{row_data['qty']}"
+            slot['t_price'].value = f"₹{row_data['price']:,.2f}"
+            slot['t_rqty'].value  = f"{row_data['run_qty']}"
+            slot['t_avg'].value   = f"₹{row_data['avg_cost']:,.2f}"
+            slot['t_pnl'].value   = pnl_display
+            slot['t_pnl'].color   = pnl_color
+            slot['t_fee'].value   = f"₹{row_data['fee']:,.2f}"
+            slot['btn_edit'].on_click = lambda e, r=dict(row_data): self.open_edit_dialog(r)
+            slot['btn_del'].on_click  = lambda e, b=broker, tid=trade_id: self.delete_trade(b, tid)
 
-                row_data = {
-                    'trade_id': trade_id, 'date': str(row_dict['date']), 'symbol': str(row_dict['symbol']),
-                    'type': row_type, 'qty': float(row_dict['qty']), 'price': float(row_dict['price']),
-                    'fee': float(row_dict.get('fee', 0.0)), 'run_qty': float(row_dict['run_qty']),
-                    'avg_cost': float(row_dict['avg_cost']), 'running_pnl': float(row_dict['running_pnl']),
-                    'broker': str(row_dict['broker'])
-                }
+        self.table.rows = [self._row_pool[i]['row'] for i in range(actual_count)]
 
-                pnl_val = row_data['running_pnl']
-                pnl_color = ft.Colors.GREEN_400 if pnl_val > 0 else (ft.Colors.RED_400 if pnl_val < 0 else ft.Colors.GREY_400)
-                pnl_display = f"₹{pnl_val:,.2f}" if row_type == 'SELL' else "—"
-
-                rows.append(
-                    ft.DataRow(
-                        color=alternating_row_color(start_idx + i),
-                        selected=is_selected,
-                        cells=[
-                            ft.DataCell(chk),
-                            ft.DataCell(ft.Text(str(row_num), text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_500)),
-                            ft.DataCell(ft.Text(row_data['date'], color=ft.Colors.WHITE)),
-                            ft.DataCell(ft.Text(str(trade_id), size=11, color=ft.Colors.GREY_400)),
-                            ft.DataCell(ft.Text(row_data['symbol'], weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)),
-                            ft.DataCell(ft.Text(row_data['type'], color=trade_color)),
-                            ft.DataCell(ft.Text(f"{row_data['qty']}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.WHITE)),
-                            ft.DataCell(ft.Text(f"₹{row_data['price']:,.2f}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.WHITE)),
-                            ft.DataCell(ft.Text(f"{row_data['run_qty']}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.BLUE_200)),
-                            ft.DataCell(ft.Text(f"₹{row_data['avg_cost']:,.2f}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.AMBER_200)),
-                            ft.DataCell(ft.Text(pnl_display, text_align=ft.TextAlign.RIGHT, color=pnl_color)),
-                            ft.DataCell(ft.Text(f"₹{row_data['fee']:,.2f}", text_align=ft.TextAlign.RIGHT, color=ft.Colors.WHITE)),
-                            ft.DataCell(ft.Row([
-                                ft.IconButton(ft.Icons.EDIT, tooltip="Edit Trade", icon_size=16, icon_color=ft.Colors.BLUE_400, on_click=lambda e, r=row_data: self.open_edit_dialog(r)),
-                                ft.IconButton(ft.Icons.DELETE_OUTLINE, tooltip="Delete Trade", icon_size=16, icon_color=ft.Colors.RED_400, on_click=lambda e, b=row_data['broker'], tid=trade_id: self.delete_trade(b, tid))
-                            ], spacing=0))
-                    ])
-                )
-        except Exception as ex:
-            print(f"[TRADE_HISTORY] ERROR building rows: {ex}")
-            rows = []
-
-        self.table.rows = rows
-
-        # Summary Metrics Calculation
-        buy_df = df[df['type'].astype(str).str.upper() == 'BUY']
-        sell_df = df[df['type'].astype(str).str.upper() == 'SELL']
-
-        total_qty_buy = buy_df['qty'].sum() if not buy_df.empty else 0
-        total_qty_sell = sell_df['qty'].sum() if not sell_df.empty else 0
-        total_fees_buy = buy_df['fee'].sum() if not buy_df.empty else 0
-        total_fees_sell = sell_df['fee'].sum() if not sell_df.empty else 0
-
-        # running_pnl is per-symbol cumulative; sum the final value of each symbol for total portfolio PnL
-        total_pnl = float(df.groupby('symbol')['running_pnl'].last().sum()) if not df.empty else 0.0
-        pnl_sum_color = ft.Colors.GREEN if total_pnl > 0 else (ft.Colors.RED if total_pnl < 0 else ft.Colors.WHITE)
-
-        self.summary_qty_buy_value.value  = f"B: {total_qty_buy:,.0f}"
-        self.summary_qty_sell_value.value  = f"S: {total_qty_sell:,.0f}"
-        self.summary_pnl_value.value       = f"₹{total_pnl:,.2f}"
-        self.summary_pnl_value.color       = pnl_sum_color
-        self.summary_fees_buy_value.value  = f"B: ₹{total_fees_buy:,.2f}"
-        self.summary_fees_sell_value.value = f"S: ₹{total_fees_sell:,.2f}"
+        # Summary Metrics — use pre-computed cache to avoid per-page pandas work
+        _summary_updated = False
+        if self._summary_dirty and self._cached_summary:
+            s = self._cached_summary
+            self.summary_qty_buy_value.value   = s['qty_buy']
+            self.summary_qty_sell_value.value  = s['qty_sell']
+            self.summary_pnl_value.value        = s['pnl']
+            self.summary_pnl_value.color        = s['pnl_color']
+            self.summary_fees_buy_value.value   = s['fees_buy']
+            self.summary_fees_sell_value.value  = s['fees_sell']
+            self._summary_dirty = False
+            _summary_updated = True
 
         all_visible_selected = page_df['trade_id'].astype(str).isin(self.selected_trades).all()
         self.select_all_chk.value = bool(len(page_df) > 0 and all_visible_selected)
@@ -970,18 +1051,19 @@ class TradeHistoryView(ft.Container):
         try:
             self.table.update()
             self.status_text.update()
-            self.summary_qty_buy_value.update()
-            self.summary_qty_sell_value.update()
-            self.summary_pnl_value.update()
-            self.summary_fees_buy_value.update()
-            self.summary_fees_sell_value.update()
+            if _summary_updated:
+                self.summary_qty_buy_value.update()
+                self.summary_qty_sell_value.update()
+                self.summary_pnl_value.update()
+                self.summary_fees_buy_value.update()
+                self.summary_fees_sell_value.update()
             self.page_text.update()
             self.prev_btn.update()
             self.next_btn.update()
         except RuntimeError:
             pass
-        except Exception as ex:
-            print(f"[TRADE_HISTORY] ERROR updating controls: {ex}")
+        except Exception:
+            pass
         # Keep table scrolled to left so leading columns are visible
         async def scroll_to_left():
             try:
@@ -1066,10 +1148,24 @@ class TradeHistoryView(ft.Container):
         try:
             date_str = self._ed_date_tb.value
             parsed_date = pd.to_datetime(date_str).to_pydatetime() if isinstance(date_str, str) else date_str
-            self.edit_date_picker.value = parsed_date
+            target_date = parsed_date
         except Exception:
-            self.edit_date_picker.value = pd.to_datetime('today').to_pydatetime()
-        self.app_state.page.open(self.edit_date_picker)
+            target_date = pd.to_datetime('today').to_pydatetime()
+            
+        # Force Flet to recognize a state change by clearing it first
+        self.edit_date_picker.value = None
+        try:
+            self.edit_date_picker.update()
+        except:
+            pass
+            
+        self.edit_date_picker.value = target_date
+        try:
+            self.edit_date_picker.update()
+        except:
+            pass
+            
+        self._open_picker(self.edit_date_picker)
 
     def _ed_on_number_change(self, e):
         """Filter non-numeric input and update the running total cost display."""

@@ -1,6 +1,5 @@
 import flet as ft
 import threading
-import time
 from state import AppState
 from components.navigation import create_sidebar
 
@@ -22,13 +21,11 @@ def main(page: ft.Page):
     page.window.width = 1500
     page.window.height = 1200
     page.window.resizable = False
+    page.window.maximized = False
     page.padding = 0
 
     # Modern font
-    page.fonts = {
-        "Inter": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-    }
-    page.theme = ft.Theme(font_family="Inter", color_scheme_seed=ft.Colors.YELLOW)
+    page.theme = ft.Theme(color_scheme_seed=ft.Colors.YELLOW)
 
     app_state = AppState(page)
     app_state.views = {}  # Initialize views dictionary for cross-view cache invalidation
@@ -37,18 +34,15 @@ def main(page: ft.Page):
     def handle_keyboard(e):
         """Handle global keyboard shortcuts: Ctrl+K (search), Ctrl+N (new trade), Esc (close dialogs)"""
         if e.key == "Meta+k" or e.key == "Control+k":  # Ctrl+K or Cmd+K
-            print("[KEYBOARD] Ctrl+K: Focus search")
             # Focus the active view's symbol filter if it has one
             active_idx = getattr(app_state, '_current_view_idx', 0)
             if active_idx == 1:  # Holdings
                 from views.holdings_view import HoldingsView
                 # TODO: Implement focus
         elif e.key == "Meta+n" or e.key == "Control+n":  # Ctrl+N
-            print("[KEYBOARD] Ctrl+N: Add new trade")
             # Navigate to Trade Entry view
             app_state.navigate(2)  # Trade Entry is index 2
         elif e.key == "Escape":  # Esc
-            print("[KEYBOARD] Esc: Close dialogs")
             # Close any open dialogs
             if hasattr(page, '_close_dialogs'):
                 page._close_dialogs()
@@ -80,7 +74,6 @@ def main(page: ft.Page):
     def _get_or_create_view(idx: int) -> ft.Container:
         """Lazy-load view: create only when first accessed, then cache it."""
         if idx not in view_cache:
-            print(f"[VIEW_INIT] Creating view {idx} ({view_classes[idx].__name__})")
             v = view_classes[idx](app_state)
             v.expand = True
             view_cache[idx] = v
@@ -89,35 +82,25 @@ def main(page: ft.Page):
 
     def _prefetch_critical_views():
         """Pre-load Holdings and TradeHistory data on app startup (runs in background).
-        This ensures fast loading when user first navigates to these views.
+        Only rebuilds holdings when trades have changed since the last rebuild.
         """
         try:
-            print("[APP] Pre-loading critical view data in background...")
-            
-            # Recalculate holdings with corrected fee logic
-            from engine import rebuild_holdings
-            print("[APP] Rebuilding holdings with corrected fee calculations...")
-            rebuild_holdings()
-            print("[APP] Holdings rebuilt ✓")
-            
-            # Pre-load Holdings data
-            holdings = _get_or_create_view(1)  # Create Holdings view
+            from engine import rebuild_holdings_if_needed
+            rebuild_holdings_if_needed()
+
+            holdings = _get_or_create_view(1)
             if hasattr(holdings, 'load_data'):
                 holdings.load_data(_reload_brokers=True, use_cache=True)
-            print("[APP] Holdings data pre-loaded ✓")
-            
-            # Pre-load TradeHistory data (with default dates: yesterday to today)
-            # Skip UI rendering during pre-load for performance
-            trade_history = _get_or_create_view(3)  # Create TradeHistory view
+
+            trade_history = _get_or_create_view(3)
             if hasattr(trade_history, '_is_preloading'):
-                trade_history._is_preloading = True  # Skip rendering
+                trade_history._is_preloading = True
             if hasattr(trade_history, 'load_data'):
                 trade_history.load_data(_reload_brokers=True, use_cache=True)
             if hasattr(trade_history, '_is_preloading'):
-                trade_history._is_preloading = False  # Re-enable rendering
-            print("[APP] TradeHistory data pre-loaded ✓")
-        except Exception as e:
-            print(f"[APP] Pre-fetch warning: {e}")  # Non-fatal if it fails
+                trade_history._is_preloading = False
+        except Exception:
+            pass
 
 
     def show_loading(idx):
@@ -140,16 +123,10 @@ def main(page: ft.Page):
                 pass
 
     def navigate(idx, **kwargs):
-        nav_start = time.time()
         app_state.nav_kwargs = kwargs
-        
-        # Timing: Sidebar update
-        t1 = time.time()
+
         if hasattr(app_state, 'sidebar'):
             app_state.sidebar.selected_index = idx
-        t2 = time.time()
-        if t2 - t1 > 0.01:
-            print(f"[NAV] Sidebar update: {(t2-t1)*1000:.1f}ms")
 
         prev = _current_idx[0]
         if prev != idx:
@@ -162,13 +139,9 @@ def main(page: ft.Page):
             # Get or create new view (lazy loading)
             active_view = _get_or_create_view(idx)
 
-            # Timing: Swap view content (instead of visibility toggle)
-            t1 = time.time()
+            # Swap view content
             active_view_container.content = active_view
             active_view_container.opacity = 1.0  # Fade in the new view
-            t2 = time.time()
-            if t2 - t1 > 0.01:
-                print(f"[NAV] View swap: {(t2-t1)*1000:.1f}ms")
 
             # Now that view is in the tree, call did_mount()
             if hasattr(active_view, "did_mount"):
@@ -179,37 +152,46 @@ def main(page: ft.Page):
             # Don't call any updates - let Flet handle rendering
             # Views will update themselves when load_data() completes and calls render_table() etc.
 
-        # Non-blocking data load: show spinner, load in background
+        # Load data for the new view
         active_view = view_cache.get(idx)
         if active_view and hasattr(active_view, 'load_data'):
-            show_loading(idx)
-            def bg_load():
+            # Detect upfront whether this view accepts _reload_brokers
+            _uses_reload_param = getattr(active_view, '_has_reload_brokers_param', None)
+            if _uses_reload_param is None:
+                import inspect
+                _uses_reload_param = '_reload_brokers' in inspect.signature(active_view.load_data).parameters
+                active_view._has_reload_brokers_param = _uses_reload_param
+
+            # If data is already cached, render instantly on the UI thread — no spinner, no thread hop.
+            # load_data() detects the cache hit and calls render_table() synchronously.
+            # If it's a cache miss (shouldn't happen after prefetch), load_data() spawns its own
+            # background thread internally, so we still never block the UI thread.
+            has_cache = (
+                getattr(active_view, '_data_loaded', False) and
+                getattr(active_view, 'current_df', None) is not None
+            )
+            if has_cache:
                 try:
-                    load_start = time.time()
-                    # Call load_data - if view has _reload_brokers param, only reload on first visit
-                    import inspect
-                    sig = inspect.signature(active_view.load_data)
-                    if '_reload_brokers' in sig.parameters:
-                        # Views like HoldingsView that cache data
-                        if hasattr(active_view, '_data_loaded') and active_view._data_loaded:
-                            active_view.load_data(_reload_brokers=False)
+                    if _uses_reload_param:
+                        active_view.load_data(_reload_brokers=False)
+                    else:
+                        active_view.load_data()
+                except Exception:
+                    pass
+            else:
+                # First visit or cache invalidated: show spinner, load in background thread
+                show_loading(idx)
+                def bg_load():
+                    try:
+                        if _uses_reload_param:
+                            active_view.load_data()
                         else:
                             active_view.load_data()
-                    else:
-                        # Views like DashboardView that don't have this parameter
-                        active_view.load_data()
-                    load_end = time.time()
-                    if load_end - load_start > 0.05:
-                        print(f"[NAV] load_data() for view {idx}: {(load_end-load_start)*1000:.1f}ms")
-                finally:
-                    hide_loading(idx)
-                    # Views handle their own updates via render_table(), table.update(), etc.
-                    # No page.update() needed here
-            threading.Thread(target=bg_load, daemon=True).start()
+                    finally:
+                        hide_loading(idx)
+                threading.Thread(target=bg_load, daemon=True).start()
         
-        nav_end = time.time()
-        total = nav_end - nav_start
-        print(f"[NAV] Total nav time (main thread): {total*1000:.1f}ms")
+
 
     app_state.navigate = navigate
 
@@ -226,8 +208,8 @@ def main(page: ft.Page):
         sidebar_container.width = 60 if sidebar_container.width == 220 else 220
         try:
             sidebar_container.update()  # Only update the sidebar container, not the entire page
-        except Exception as ex:
-            print(f"[SIDEBAR] Toggle error: {ex}")
+        except Exception:
+            pass
 
     sidebar = create_sidebar(page, nav_change, toggle_sidebar)
     app_state.sidebar = sidebar
@@ -263,9 +245,8 @@ def main(page: ft.Page):
     # Pre-load Holdings data in background while user sees Dashboard
     threading.Thread(target=_prefetch_critical_views, daemon=True).start()
 
-    # Navigate to Dashboard (all views already built, no race possible)
+    # Navigate to Dashboard
     navigate(0)
-    page.update()
 
 if __name__ == "__main__":
     ft.run(main)

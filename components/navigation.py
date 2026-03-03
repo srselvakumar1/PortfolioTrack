@@ -283,11 +283,10 @@ class PremiumSidebar(ft.Container):
             theme_btn.icon_color = "#FDB813" if not self._theme_dark else "#60A5FA"
             try:
                 theme_btn.update()
-            except Exception as ex:
-                print(f"[THEME] Toggle update error: {ex}")
+            except Exception:
                 try:
                     self.update()
-                except:
+                except Exception:
                     pass
 
         theme_btn = ft.IconButton(
@@ -304,8 +303,8 @@ class PremiumSidebar(ft.Container):
         async def force_quit(e):
             try:
                 await self._flet_page.window.close()
-            except Exception as ex:
-                print(f"Error during exit: {ex}")
+            except Exception:
+                pass
 
         def exit_hover(e):
             exit_btn.bgcolor = "#3A1A1A" if e.data == "true" else "transparent"
