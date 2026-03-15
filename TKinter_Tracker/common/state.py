@@ -1,18 +1,13 @@
-import flet as ft
-from typing import Callable, Any, Dict
+import tkinter as tk
+from typing import Any, Dict
 
-from data_cache import DataCache
+from common.data_cache import DataCache
 
 class AppState:
-    """Central state manager avoiding Flet lifecycle bugs."""
+    """Central state manager for PTracker application."""
 
-    def __init__(self, page: ft.Page):
-        self.page: ft.Page = page
-
-        # Navigation State
-        self.nav_kwargs: Dict[str, Any] = {}
-        self.navigate: Callable | None = None  # Populated in main.py
-        self.sidebar: ft.Control | None = None # Populated in main.py
+    def __init__(self, root: tk.Tk):
+        self.root: tk.Tk = root
 
         # View State Storage (prevents data loss when switching tabs)
         self.trade_history_state: Dict[str, Any] = {}
@@ -29,7 +24,7 @@ class AppState:
     def get_brokers_cached(self, *, force_refresh: bool = False) -> list[str]:
         """Return broker list, using an in-memory cache when possible."""
         if force_refresh or self.brokers_cache is None:
-            import models.crud as crud
+            import common.models.crud as crud
             self.brokers_cache = crud.get_all_brokers()
             self.brokers_cache_version += 1
         return self.brokers_cache

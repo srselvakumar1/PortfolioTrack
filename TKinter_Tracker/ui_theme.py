@@ -25,6 +25,12 @@ class ModernStyle:
     ACCENT_PRIMARY = "#2563EB"    # Blue 600
     ACCENT_SECONDARY = "#16A34A"  # Green 600
     ACCENT_TERTIARY = "#D97706"   # Amber 600
+    
+    # Pale variants for pills/backgrounds
+    ACCENT_PRIMARY_PALE = "#DBEAFE"   # Blue 100
+    ACCENT_SECONDARY_PALE = "#DCFCE7" # Green 100
+    ACCENT_TERTIARY_PALE = "#FEF3C7"  # Amber 100
+    ACCENT_PURPLE_PALE = "#E9D5FF"    # Purple 100
 
     TEXT_PRIMARY = "#0F172A"      # Slate 900
     TEXT_SECONDARY = "#475569"    # Slate 600
@@ -37,7 +43,25 @@ class ModernStyle:
     SUCCESS = ACCENT_SECONDARY
     WARNING = ACCENT_TERTIARY
     ERROR = "#DC2626"             # Red 600
+    ERROR_PALE = "#FEE2E2"        # Red 100
     SALMON = "#FA8072"            # Salmon (for cancel/close actions)
+    
+    INFO = "#0891B2"              # Cyan 600
+    INFO_PALE = "#CFFAFE"         # Cyan 100
+    
+    BRAND_GOLD = "#D4AF37"
+    
+    # Extended Slate for dark modals / sidebars
+    SLATE_50 = "#F8FAFC"
+    SLATE_100 = "#F1F5F9"
+    SLATE_200 = "#E2E8F0"
+    SLATE_300 = "#CBD5E1"
+    SLATE_400 = "#94A3B8"
+    SLATE_500 = "#64748B"
+    SLATE_600 = "#475569"
+    SLATE_700 = "#334155"
+    SLATE_800 = "#1E293B"
+    SLATE_900 = "#0F172A"
 
     # Fonts
     FONT_FAMILY = (
@@ -48,6 +72,10 @@ class ModernStyle:
     FONT_SUBHEADING = (FONT_FAMILY, 12, "bold")
     FONT_BODY = (FONT_FAMILY, 11)
     FONT_SMALL = (FONT_FAMILY, 10)
+    
+    # UI Scaling (Typographic Hierarchy)
+    FONT_KPI_VALUE = (FONT_FAMILY, 26, "bold")
+    FONT_KPI_LABEL = (FONT_FAMILY, 12, "bold")
 
     # Layout / component tokens ("stylesheet" layer)
     NAV_ITEM_BG = BG_TERTIARY
@@ -60,8 +88,9 @@ class ModernStyle:
     NAV_ITEM_OUTER_PADX = 10
 
     KPI_CARD_HEIGHT = 118
-    KPI_ACCENT_BAR_HEIGHT = 4
+    KPI_ACCENT_BAR_HEIGHT = 3
     DASH_GRID_CARD_HEIGHT = 240
+    DASH_SECTION_CARD_HEIGHT = 305 #Top performing stocks and for the othe 4
 
     @classmethod
     def apply_theme(cls, root: tk.Tk) -> None:
@@ -118,7 +147,7 @@ class ModernStyle:
         )
         style.configure(
             "Treeview.Heading",
-            background=cls.ACCENT_PRIMARY,
+            background=cls.SLATE_800,        # Dark slate — distinct from selection blue
             foreground=cls.TEXT_ON_ACCENT,
             font=(cls.FONT_FAMILY, 11, "bold"),
             relief="flat",
@@ -126,7 +155,7 @@ class ModernStyle:
         try:
             style.map(
                 "Treeview.Heading",
-                background=[("active", cls.ACCENT_PRIMARY)],
+                background=[("active", cls.SLATE_700)],   # Slightly lighter slate on hover
                 foreground=[("active", cls.TEXT_ON_ACCENT)],
             )
         except Exception:

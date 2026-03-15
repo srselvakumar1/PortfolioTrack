@@ -6,10 +6,10 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
 
-from TKinter_Tracker.views.base_view import BaseView
-from TKinter_Tracker.ui_theme import ModernStyle
-from TKinter_Tracker.ui_widgets import ModernButton
-from TKinter_Tracker.ui_utils import center_window
+from views.base_view import BaseView
+from ui_theme import ModernStyle
+from ui_widgets import ModernButton
+from ui_utils import center_window
 
 class SettingsView(BaseView):
     """Application settings and configuration."""
@@ -23,6 +23,9 @@ class SettingsView(BaseView):
         header_frame.pack(fill="x", padx=15, pady=(15, 10))
         tk.Label(header_frame, text="⚙️ Settings", fg=ModernStyle.TEXT_PRIMARY, bg=ModernStyle.BG_PRIMARY, font=ModernStyle.FONT_TITLE).pack(anchor="w")
         tk.Label(header_frame, text="Configuration and broker management", fg=ModernStyle.TEXT_SECONDARY, bg=ModernStyle.BG_PRIMARY, font=ModernStyle.FONT_BODY).pack(anchor="w")
+
+        # Accent divider
+        tk.Frame(self, bg="#D4AF37", height=1).pack(fill="x", padx=15, pady=(10, 10))
 
         # Scrollable container
         canvas = tk.Canvas(self, bg=ModernStyle.BG_PRIMARY, highlightthickness=0)
@@ -105,7 +108,7 @@ class SettingsView(BaseView):
     def _get_broker_trade_counts(self) -> dict:
         """Get count of trades for each broker."""
         try:
-            from TKinter_Tracker.common.database import db_session
+            from common.database import db_session
             with db_session() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT broker, COUNT(*) as count FROM trades GROUP BY broker")
@@ -116,7 +119,7 @@ class SettingsView(BaseView):
     def _reload_brokers(self) -> None:
         """Reload broker list and update count label."""
         try:
-            import models.crud as crud
+            import common.models.crud as crud
             brokers = crud.get_all_brokers()
             self._broker_trade_counts = self._get_broker_trade_counts()
         except Exception:
@@ -176,7 +179,7 @@ class SettingsView(BaseView):
                 status_label.config(text="Enter a broker name", fg=ModernStyle.ERROR)
                 return
             try:
-                import models.crud as crud
+                import common.models.crud as crud
                 existing = [b.upper() for b in crud.get_all_brokers()]
                 if name in existing:
                     status_label.config(text=f"Broker '{name}' already exists", fg=ModernStyle.ERROR)
@@ -234,7 +237,7 @@ class SettingsView(BaseView):
             return
         
         try:
-            import models.crud as crud
+            import common.models.crud as crud
             brokers = crud.get_all_brokers()
         except Exception:
             brokers = []
@@ -264,10 +267,10 @@ class SettingsView(BaseView):
         
         def _bg():
             try:
-                import models.crud as crud
+                import common.models.crud as crud
                 crud.delete_broker(name)
                 try:
-                    from TKinter_Tracker.common.engine import rebuild_holdings
+                    from common.engine import rebuild_holdings
                     rebuild_holdings()
                 except Exception:
                     pass
@@ -278,7 +281,8 @@ class SettingsView(BaseView):
                     pass
                 self.after(0, lambda: (self._reload_brokers(), self._refresh_broker_list(modal), self.broker_status.config(text=f"Broker '{name}' deleted ✓")))
             except Exception as e:
-                self.after(0, lambda: self.broker_status.config(text=f"Delete failed: {e}"))
+                err = str(e)
+                self.after(0, lambda e=err: self.broker_status.config(text=f"Delete failed: {e}"))
         
         threading.Thread(target=_bg, daemon=True).start()
     
@@ -332,7 +336,7 @@ class SettingsView(BaseView):
                 status.config(text="Enter a broker name", fg=ModernStyle.ERROR)
                 return
             try:
-                import models.crud as crud
+                import common.models.crud as crud
                 existing = [b.upper() for b in crud.get_all_brokers()]
                 if name in existing:
                     status.config(text=f"'{name}' already exists", fg=ModernStyle.ERROR)
@@ -371,10 +375,10 @@ class SettingsView(BaseView):
 
         def _bg():
             try:
-                import models.crud as crud
+                import common.models.crud as crud
                 crud.wipe_all_data()
                 try:
-                    from TKinter_Tracker.common.engine import rebuild_holdings
+                    from common.engine import rebuild_holdings
                     rebuild_holdings()
                 except Exception:
                     pass
@@ -385,7 +389,8 @@ class SettingsView(BaseView):
                     pass
                 self.after(0, lambda: (self.broker_status.config(text="All data wiped ✓"), self._reload_brokers()))
             except Exception as e:
-                self.after(0, lambda: self.broker_status.config(text=f"Wipe failed: {e}"))
+                err = str(e)
+                self.after(0, lambda e=err: self.broker_status.config(text=f"Wipe failed: {e}"))
 
         threading.Thread(target=_bg, daemon=True).start()
 

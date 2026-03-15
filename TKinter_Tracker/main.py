@@ -13,27 +13,13 @@ from pathlib import Path
 from typing import Dict, Callable
 import atexit
 
-# Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
-
-from TKinter_Tracker.common.state import AppState
-from TKinter_Tracker.common.database import initialize_database, close_all_connections
-from TKinter_Tracker.ui_theme import ModernStyle
-from TKinter_Tracker.ui_widgets import ModernButton
-from TKinter_Tracker.ui_utils import center_window
-
+from common.state import AppState
+from common.database import initialize_database, close_all_connections
+from ui_theme import ModernStyle
+from ui_widgets import ModernButton
+from ui_utils import center_window
 
 def _install_macos_openpanel_stderr_filter() -> None:
-    """Silence a noisy, harmless AppKit log line on macOS.
-
-    Some macOS/Tk builds print to stderr:
-      "The class 'NSOpenPanel' overrides the method identifier..."
-
-    This is not a Python warning/exception; it's a Cocoa log line. We filter only
-    that specific message to keep terminal output clean.
-    """
-
     if sys.platform != "darwin":
         return
 
@@ -102,8 +88,6 @@ def _install_macos_openpanel_stderr_filter() -> None:
 
 
 class ViewManager:
-    """Manages view lifecycle and navigation."""
-    
     def __init__(self, container: tk.Frame, app_state=None):
         self.container = container
         self.app_state = app_state
@@ -156,12 +140,19 @@ class Sidebar(tk.Frame):
     """Beautifully designed sidebar navigation with modern aesthetics."""
     
     def __init__(self, parent, on_navigate: Callable):
-        # Rich, sophisticated color palette
-        sidebar_bg = "#0f1419"  # Deep charcoal
-        accent_primary = "#3b82f6"  # Vibrant blue
-        accent_hover = "#60a5fa"  # Lighter blue
-        accent_pressed = "#2563eb"  # Darker blue for press
-        accent_gradient = "#1e3a8a"  # Deep blue gradient
+        # Use centralized UI Theme for Sophisticated palette
+        sidebar_bg = ModernStyle.SLATE_900
+        accent_primary = ModernStyle.BRAND_GOLD
+        accent_hover = ModernStyle.ACCENT_TERTIARY_PALE
+        accent_pressed = ModernStyle.ACCENT_TERTIARY
+        accent_gradient = ModernStyle.SLATE_800
+
+        # Futuristic, creative color palette
+        # sidebar_bg = "#13111c"       # Midnight Plum
+        # accent_primary = "#a855f7"   # Digital Lavender
+        # accent_hover = "#c084fc"     # Light Orchid
+        # accent_pressed = "#7e22ce"   # Deep Violet for press
+        # accent_gradient = "#4c1d95"  # Deep Indigo gradient
         
         super().__init__(parent, bg=sidebar_bg, width=248)
         self.pack(side=tk.LEFT, fill=tk.Y)
@@ -197,7 +188,7 @@ class Sidebar(tk.Frame):
             command=self.toggle,
             invoke_on_press=True,
             bg=accent_primary,
-            fg="#ffffff",
+            fg=ModernStyle.TEXT_ON_ACCENT,
             canvas_bg=sidebar_bg,
             width=42,
             height=42,
@@ -214,7 +205,7 @@ class Sidebar(tk.Frame):
             text="PTracker",
             font=(ModernStyle.FONT_FAMILY, 23, "bold"),
             bg=sidebar_bg,
-            fg="#ffffff",
+            fg=ModernStyle.TEXT_ON_ACCENT,
             anchor="w",
         )
         self._title_lbl.pack(anchor="w")
@@ -223,7 +214,7 @@ class Sidebar(tk.Frame):
             text="Portfolio Management",
             font=(ModernStyle.FONT_FAMILY, 12),
             bg=sidebar_bg,
-            fg="#64748b",
+            fg=ModernStyle.TEXT_TERTIARY,
             anchor="w",
         )
         self._subtitle_lbl.pack(anchor="w", pady=(2, 0))
@@ -231,28 +222,31 @@ class Sidebar(tk.Frame):
         # Elegant separator with gradient effect
         sep_frame = tk.Frame(self, bg=sidebar_bg, height=3)
         sep_frame.pack(fill=tk.X, padx=16, pady=(12, 16))
-        tk.Frame(sep_frame, bg="#1e293b", height=1).pack(fill=tk.X)
+        tk.Frame(sep_frame, bg=ModernStyle.SLATE_800, height=1).pack(fill=tk.X)
         tk.Frame(sep_frame, bg=accent_primary, height=1).pack(fill=tk.X, pady=(1, 0))
 
-        # Refined section label with better typography
+        # Refined section label with better typography and tracking/kerning
         self._menu_lbl = tk.Label(
             self,
-            text="NAVIGATION",
-            font=(ModernStyle.FONT_FAMILY, 11, "bold"),
+            text="N A V I G A T I O N",
+            font=(ModernStyle.FONT_FAMILY, 10, "bold"),
             bg=sidebar_bg,
-            fg="#64748b",
+            fg=ModernStyle.TEXT_TERTIARY,
             anchor="w",
         )
         self._menu_lbl.pack(fill=tk.X, padx=20, pady=(0, 12))
         
-        # Navigation items
+        # Navigation items — emoji prefix gives visual context even without PNG icons
         nav_items = [
-            ("Dashboard", 0),
-            ("My Holdings", 1),
-            ("Trade Entry", 2),
-            ("Trade History", 3),
-            ("Settings", 4),
-            ("Help", 5),
+            ("📊  Dashboard",    0),
+            ("🌟  My Holdings",  1),
+            ("🌀  Trade Entry",  2),
+            ("🧬  Trade History",3),
+            ("🛡️  Settings",     4),
+            ("✨  Tax Report",   5),
+            ("👁  Watchlist",    6),
+            ("💠  Valuation",    7),
+            ("🔅  Help",         8),
         ]
 
         self._nav_labels = {idx: label for (label, idx) in nav_items}
@@ -268,25 +262,47 @@ class Sidebar(tk.Frame):
         for label, idx in nav_items:
             self._add_nav_button(label, idx)
         
-        # Spacer with sidebar background
-        tk.Frame(self, bg=sidebar_bg).pack(fill=tk.BOTH, expand=True)
-        
         # Sophisticated exit button with refined styling
         exit_btn = ModernButton(
             self,
             text="Exit App",
             command=lambda: parent.quit(),
             invoke_on_press=True,
-            bg="#dc2626",  # Bold red for exit
-            fg="#ffffff",
+            bg=ModernStyle.ERROR,  # Bold red for exit
+            fg=ModernStyle.TEXT_ON_ACCENT,
             canvas_bg=sidebar_bg,
             width=208,
             height=46,
             radius=10,
             font=(ModernStyle.FONT_FAMILY, 14, "bold"),
         )
-        exit_btn.pack(padx=20, pady=20, anchor="s")
+        exit_btn.pack(side=tk.BOTTOM, padx=20, pady=(10, 20))
         self._exit_btn = exit_btn
+        
+        # ── Mini Market Tickers ──
+        self._ticker_frame = tk.Frame(self, bg=sidebar_bg)
+        self._ticker_labels = {}
+        
+        tk.Frame(self._ticker_frame, bg=ModernStyle.DIVIDER_COLOR, height=1).pack(fill=tk.X, padx=16, pady=(0, 6))
+        
+        tk.Label(
+            self._ticker_frame, text="MARKETS (LIVE)", 
+            font=(ModernStyle.FONT_FAMILY, 9, "bold"),
+            bg=sidebar_bg, fg=ModernStyle.TEXT_ON_ACCENT, anchor="w"
+        ).pack(fill=tk.X, padx=20, pady=(0, 4))
+        
+        self.tickers_container = tk.Frame(self._ticker_frame, bg=sidebar_bg)
+        self.tickers_container.pack(fill=tk.X, padx=20, pady=(0, 6))
+        
+        # We will populate the tickers dynamically after a background fetch
+        import common.tickers as tck
+        self._ticker_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        # Show Loading... immediately, then trigger a one-time background fetch
+        self._show_ticker_loading()
+        tck.refresh_mini_tickers(callback=self._on_tickers_fetched)
+        
+        # Spacer with sidebar background (takes remaining space)
+        tk.Frame(self, bg=sidebar_bg).pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
     def set_active(self, idx: int) -> None:
         self._active_idx = idx
@@ -305,10 +321,10 @@ class Sidebar(tk.Frame):
                 if indicator is not None:
                     indicator.configure(bg=self.sidebar_bg, width=3)
                 btn.set_palette(
-                    bg="#1e293b",  # Subtle background
-                    fg="#cbd5e1",  # Soft text color
-                    hover_bg="#334155",  # Gentle hover
-                    pressed_bg="#0f172a",  # Subtle press
+                    bg=ModernStyle.SLATE_800,  # Subtle background
+                    fg=ModernStyle.SLATE_300,  # Soft text color
+                    hover_bg=ModernStyle.SLATE_700,  # Gentle hover
+                    pressed_bg=ModernStyle.SLATE_900,  # Subtle press
                 )
 
     def _try_load_icon(self, label: str, filename: str, *, subsample: int = 2) -> None:
@@ -341,8 +357,8 @@ class Sidebar(tk.Frame):
             command=lambda: self.on_navigate(idx),
             invoke_on_press=True,
             icon=icon,
-            bg="#1e293b",  # Refined neutral background
-            fg="#cbd5e1",  # Soft text
+            bg=ModernStyle.SLATE_800,  # Refined neutral background
+            fg=ModernStyle.SLATE_300,  # Soft text
             canvas_bg=self.sidebar_bg,
             width=self._btn_w_expanded,
             height=46,
@@ -358,13 +374,16 @@ class Sidebar(tk.Frame):
         """Collapse/expand the sidebar."""
         self._collapsed = not bool(self._collapsed)
 
+        # Emoji abbreviations used when sidebar is collapsed (no PNG icons)
         abbr = {
-            0: "D",
-            1: "H",
-            2: "TE",
-            3: "TH",
-            4: "S",
-            5: "?",
+            0: "📊",
+            1: "💼",
+            2: "➕",
+            3: "📜",
+            4: "⚙️",
+            5: "📄",
+            6: "🔮",
+            7: "👁",
         }
 
         if self._collapsed:
@@ -432,6 +451,61 @@ class Sidebar(tk.Frame):
         except Exception:
             pass
 
+    def _show_ticker_loading(self):
+        """Show the Loading... placeholder before data arrives."""
+        for w in self.tickers_container.winfo_children():
+            w.destroy()
+        tk.Label(self.tickers_container, text="Loading...", bg=self.sidebar_bg, fg=ModernStyle.TEXT_ON_ACCENT, font=(ModernStyle.FONT_FAMILY, 10)).pack(anchor="w")
+    
+    def _on_tickers_fetched(self):
+        """Callback invoked from background thread when tickers are ready."""
+        # Use after(0, ...) to safely update Tkinter from the background thread.
+        try:
+            self.after(0, self._render_tickers)
+        except Exception:
+            pass
+
+    def _render_tickers(self):
+        """Redraw the ticker labels using cached data."""
+        import common.tickers as tck
+        
+        if self._collapsed:
+            return
+        if not self._ticker_frame.winfo_ismapped():
+            self._ticker_frame.pack(side=tk.BOTTOM, fill=tk.X, after=self._exit_btn)
+
+        data = tck.get_mini_tickers()
+        
+        for w in self.tickers_container.winfo_children():
+            w.destroy()
+            
+        if not data:
+            tk.Label(self.tickers_container, text="No data", bg=self.sidebar_bg, fg=ModernStyle.TEXT_ON_ACCENT, font=(ModernStyle.FONT_FAMILY, 10)).pack(anchor="w")
+        else:
+            for name, info in data.items():
+                row = tk.Frame(self.tickers_container, bg=self.sidebar_bg)
+                row.pack(fill=tk.X, pady=1)
+                
+                tk.Label(row, text=name, bg=self.sidebar_bg, fg=ModernStyle.TEXT_ON_ACCENT, font=(ModernStyle.FONT_FAMILY, 10)).pack(side=tk.LEFT)
+                
+                pct = info.get("pct", 0.0)
+                cp = info.get("price", 0.0)
+                
+                color = ModernStyle.SUCCESS if pct >= 0 else ModernStyle.ERROR
+                arrow = "▲" if pct >= 0 else "▼"
+                
+                if "USD" in name:
+                    val_str = f"{cp:.2f}"
+                else:
+                    val_str = f"{cp:,.0f}"
+                    
+                tk.Label(row, text=f"{val_str} {arrow}{abs(pct):.1f}%", bg=self.sidebar_bg, fg=color, font=(ModernStyle.FONT_FAMILY, 10, "bold")).pack(side=tk.RIGHT)
+
+    def refresh_tickers(self):
+        """Trigger a fresh background fetch, then re-render. Called by the Dashboard Refresh button."""
+        import common.tickers as tck
+        self._show_ticker_loading()
+        tck.refresh_mini_tickers(callback=self._on_tickers_fetched)
 
 class PTrackerApp:
     """Main application controller."""
@@ -439,7 +513,7 @@ class PTrackerApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("PTracker - Portfolio Tracker")
-        self.root.geometry("1500x900")
+        self.root.geometry("1500x1150")
 
         # Center on screen after initial sizing
         try:
@@ -455,7 +529,10 @@ class PTrackerApp:
         ModernStyle.apply_theme(root)
         
         # Initialize database
+        from common.database import initialize_database, ensure_marketdata_schema, ensure_watchlist_schema
         initialize_database()
+        ensure_marketdata_schema()
+        ensure_watchlist_schema()
         
         # Store for cleanup
         atexit.register(lambda: close_all_connections(optimize=False))
@@ -487,9 +564,17 @@ class PTrackerApp:
         # Show first view
         self.navigate(0)
 
+        # Expose app on root window so views can find ViewManager via winfo_toplevel()
+        try:
+            self.root._ptracker_app = self
+        except Exception:
+            pass
+
     def _set_app_icon(self) -> None:
         try:
-            base = Path(__file__).resolve().parent.parent / "common"
+            from pathlib import Path
+            import sys
+            base = Path(__file__).resolve().parent / "common"
             candidates = [
                 base / "assets" / "app_icon.png",
                 # Fallbacks (if you haven’t provided a dedicated app icon yet)
@@ -498,27 +583,42 @@ class PTrackerApp:
             ]
             icon_path = next((p for p in candidates if p.exists()), None)
             if icon_path is None:
+                print("[ICON] No valid icon file found in candidates.")
                 return
 
             self._app_icon = tk.PhotoImage(file=str(icon_path))
-            # iconphoto affects window icons on Windows/X11; on macOS it won't replace the Dock icon
-            # for a plain `python main.py` run.
+            # iconphoto affects window icons on Windows/X11
             try:
                 self.root.iconphoto(True, self._app_icon)
             except Exception:
                 # Some Tk variants prefer the wm call.
-                self.root.tk.call("wm", "iconphoto", self.root._w, self._app_icon)  # type: ignore[attr-defined]
-        except Exception:
+                try:
+                    self.root.tk.call("wm", "iconphoto", self.root._w, self._app_icon)  # type: ignore
+                except Exception:
+                    pass
+            
+            # macOS specific: setting the Dock icon requires a specific Tk call in some Tk wrapper versions
+            if sys.platform == "darwin":
+                try:
+                    # In newer Tk on Mac, you can sometimes set the dock icon specifically
+                    self.root.tk.call("tk::mac::iconBitmap", self.root._w, 128, 128, "-kind", "photo", "-photo", self._app_icon)
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[ICON] Error setting app icon: {e}")
             self._app_icon = None
     
     def _setup_views(self):
         """Register all views."""
-        from TKinter_Tracker.views.holdings_view import HoldingsView
-        from TKinter_Tracker.views.dashboard_view import DashboardView
-        from TKinter_Tracker.views.trade_entry_view import TradeEntryView
-        from TKinter_Tracker.views.trade_history_view import TradeHistoryView
-        from TKinter_Tracker.views.settings_view import SettingsView
-        from TKinter_Tracker.views.help_view import HelpView
+        from views.holdings_view import HoldingsView
+        from views.dashboard_view import DashboardView
+        from views.trade_entry_view import TradeEntryView
+        from views.trade_history_view import TradeHistoryView
+        from views.settings_view import SettingsView
+        from views.help_view import HelpView
+        from views.tax_report_view import TaxReportView
+        from views.watchlist_view import WatchlistView
+        from views.valuation_view import ValuationView
         
         self.view_manager.register_view('dashboard', DashboardView)
         self.view_manager.register_view('holdings', HoldingsView)
@@ -526,10 +626,13 @@ class PTrackerApp:
         self.view_manager.register_view('trade_history', TradeHistoryView)
         self.view_manager.register_view('settings', SettingsView)
         self.view_manager.register_view('help', HelpView)
+        self.view_manager.register_view('tax', TaxReportView)
+        self.view_manager.register_view('watchlist', WatchlistView)
+        self.view_manager.register_view('valuation', ValuationView)
     
     def navigate(self, view_idx: int):
         """Navigate to a view by index."""
-        views = ['dashboard', 'holdings', 'trade_entry', 'trade_history', 'settings', 'help']
+        views = ['dashboard', 'holdings', 'trade_entry', 'trade_history', 'settings', 'tax', 'watchlist', 'valuation', 'help']
         if 0 <= view_idx < len(views):
             try:
                 if hasattr(self, "sidebar") and hasattr(self.sidebar, "set_active"):
@@ -537,7 +640,6 @@ class PTrackerApp:
                 self.view_manager.show_view(views[view_idx])
             except Exception as e:
                 print(f"Error loading view {views[view_idx]}: {e}")
-
 
 def main():
     """Application entry point."""
@@ -560,3 +662,9 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# pyinstaller --noconfirm --windowed --onedir --name "PTracker" --icon "common/assets/icons/app_icon.png" --collect-all pandas --collect-all tkcalendar --collect-all babel --exclude-module "pytest" --add-data "views:views" --add-data "common:common" main.py
+
+# pyinstaller --noconfirm --onedir --name "PTracker_Debug" --add-data "views:views" --add-data "common:common" main.py
+
+# pyinstaller --noconfirm --windowed --onedir --name "PTracker" --icon "common/assets/icons/app_icon.png" --collect-submodules pandas  --collect-all tkcalendar --exclude-module "pytest" --exclude-module "matplotlib" --exclude-module "notebook" --add-data "views:views" --add-data "common:common" --add-data "sqllite.db:." main.py

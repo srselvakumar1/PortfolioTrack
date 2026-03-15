@@ -272,11 +272,7 @@ class ModernButton(tk.Canvas):
         except Exception:
             pass
         self._reset_after_id = None
-        try:
-            # Ensure we receive the corresponding mouse-up even if focus shifts.
-            self.grab_set()
-        except Exception:
-            pass
+        
         self._redraw(self._bg_pressed)
 
         # Schedule an invoke shortly after press. This fixes cases where
@@ -314,10 +310,7 @@ class ModernButton(tk.Canvas):
         if not self._is_pressed:
             return
         self._is_pressed = False
-        try:
-            self.grab_release()
-        except Exception:
-            pass
+        
         self._redraw(self._bg_normal)
 
     def _on_release(self, event=None):
@@ -339,10 +332,7 @@ class ModernButton(tk.Canvas):
         except Exception:
             pass
         self._reset_after_id = None
-        try:
-            self.grab_release()
-        except Exception:
-            pass
+        
         self._redraw(self._bg_hover)
         if was_pressed and self._command and not self._click_invoked:
             self._click_invoked = True
@@ -574,3 +564,128 @@ class DatePickerButton(tk.Frame):
         if date:
             self.date_label.config(text=date.strftime("%Y-%m-%d"))
 
+class PremiumModal(tk.Toplevel):
+    """
+    A unified base class for all popup modals.
+    Provides standard window styling, centering, and a clean light/modern aesthetic.
+    """
+    def __init__(self, parent, title: str, geometry: str = "500x520", icon: str = "✨"):
+        super().__init__(parent)
+        self.title(f"{title}")
+        self.configure(bg=ModernStyle.BG_PRIMARY)
+        self.resizable(False, False)
+        self.geometry(geometry)
+        
+        try:
+            self.transient(parent.winfo_toplevel())
+            self.grab_set()
+        except Exception:
+            pass
+            
+        try:
+            from ui_utils import center_window
+            center_window(self, parent=parent.winfo_toplevel())
+        except Exception:
+            pass
+            
+        # ── Premium header with accent gradient bar ──
+        self.header = tk.Frame(self, bg=ModernStyle.BG_PRIMARY)
+        self.header.pack(fill="x")
+
+        # Thin accent gradient bar at very top
+        tk.Frame(self.header, bg=ModernStyle.ACCENT_PRIMARY, height=3).pack(fill="x")
+
+        self.inner_hdr = tk.Frame(self.header, bg=ModernStyle.BG_PRIMARY)
+        self.inner_hdr.pack(fill="x", padx=28, pady=(18, 16))
+
+        # Left block: icon + title
+        if icon:
+            tk.Label(
+                self.inner_hdr, text=icon, bg=ModernStyle.BG_PRIMARY, fg=ModernStyle.TEXT_PRIMARY,
+                font=(ModernStyle.FONT_FAMILY, 26)
+            ).pack(side="left", padx=(0, 12))
+
+        self.title_col = tk.Frame(self.inner_hdr, bg=ModernStyle.BG_PRIMARY)
+        self.title_col.pack(side="left", fill="y")
+        self.title_lbl = tk.Label(
+            self.title_col, text=title,
+            bg=ModernStyle.BG_PRIMARY, fg=ModernStyle.TEXT_PRIMARY,
+            font=(ModernStyle.FONT_FAMILY, 20, "bold")
+        )
+        self.title_lbl.pack(anchor="w")
+        
+        # Area for child classes to put chips/badges under the title.
+        self.chips_row = tk.Frame(self.title_col, bg=ModernStyle.BG_PRIMARY)
+        self.chips_row.pack(anchor="w", pady=(4, 0))
+
+        # ── Scrolling content card (Main Body) ──
+        self.body_card = tk.Frame(self, bg=ModernStyle.BG_SECONDARY, highlightbackground=ModernStyle.BORDER_COLOR, highlightthickness=1)
+        self.body_card.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        # Accent separator under header
+        tk.Frame(self.body_card, bg=ModernStyle.ACCENT_PRIMARY, height=2).pack(fill="x")
+        
+        self.content_frame = tk.Frame(self.body_card, bg=ModernStyle.BG_SECONDARY)
+        self.content_frame.pack(fill="both", expand=True, padx=24, pady=(20, 8))
+        self.content_frame.grid_columnconfigure(0, weight=1)
+
+        # ── Footer / Actions Area ──
+        self.status_lbl = tk.Label(
+            self.body_card, text="", bg=ModernStyle.BG_SECONDARY, fg=ModernStyle.TEXT_SECONDARY,
+            font=(ModernStyle.FONT_FAMILY, 10, "italic"), anchor="w"
+        )
+        self.status_lbl.pack(anchor="w", padx=24, pady=(0, 8), fill="x")
+        
+        # Divider before buttons
+        tk.Frame(self.body_card, bg=ModernStyle.BORDER_COLOR, height=1).pack(fill="x", padx=20, pady=(0, 12))
+
+        self.actions_frame = tk.Frame(self.body_card, bg=ModernStyle.BG_SECONDARY)
+        self.actions_frame.pack(fill="x", padx=24, pady=(0, 20))
+
+    def set_status(self, text: str, is_error: bool = False):
+        color = ModernStyle.ERROR if is_error else ModernStyle.TEXT_TERTIARY
+        self.status_lbl.configure(text=text, fg=color)
+        
+    def add_chip(self, emoji: str, text: str, bg_color: str = ModernStyle.ACCENT_PRIMARY_PALE, fg_color: str = ModernStyle.ACCENT_PRIMARY):
+        chip = tk.Frame(self.chips_row, bg=bg_color, highlightthickness=1, highlightbackground=fg_color)
+        chip.pack(side="left", padx=(0, 6))
+        tk.Label(
+            chip, text=f"{emoji} {text}", bg=bg_color, fg=fg_color,
+            font=(ModernStyle.FONT_FAMILY, 10, "bold"),
+            padx=8, pady=2
+        ).pack()
+
+class LoadingOverlay(tk.Frame):
+    """
+    A unified, non-blocking loading overlay to provide feedback during data fetching.
+    """
+    def __init__(self, parent, text: str = "Loading..."):
+        super().__init__(parent, bg=ModernStyle.BG_PRIMARY)
+        self.text = text
+        self._build()
+        
+    def _build(self):
+        # A simple centered message
+        container = tk.Frame(self, bg=ModernStyle.BG_PRIMARY)
+        container.place(relx=0.5, rely=0.5, anchor="center")
+        
+        tk.Label(
+            container, text="⏳", bg=ModernStyle.BG_PRIMARY, fg=ModernStyle.ACCENT_PRIMARY,
+            font=(ModernStyle.FONT_FAMILY, 32)
+        ).pack(pady=(0, 10))
+        
+        self.lbl = tk.Label(
+            container, text=self.text, bg=ModernStyle.BG_PRIMARY, fg=ModernStyle.TEXT_SECONDARY,
+            font=(ModernStyle.FONT_FAMILY, 14, "italic")
+        )
+        self.lbl.pack()
+        
+    def show(self):
+        self.lift()
+        self.place(x=0, y=0, relwidth=1.0, relheight=1.0)
+        
+    def hide(self):
+        self.place_forget()
+        
+    def set_text(self, text: str):
+        self.lbl.configure(text=text)

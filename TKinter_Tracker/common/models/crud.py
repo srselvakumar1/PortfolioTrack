@@ -1,5 +1,5 @@
 import sqlite3
-from database import db_session, db_transaction
+from common.database import db_session, db_transaction
 
 # Database operations now use the db_session() context manager for clean connections.
 
@@ -77,22 +77,6 @@ def get_existing_trade_ids(broker: str) -> set:
         cursor = conn.cursor()
         cursor.execute('SELECT trade_id FROM trades WHERE broker=?', (broker,))
         return {row[0] for row in cursor.fetchall()}
-
-def replace_symbol(old_symbol: str, new_symbol: str, broker: str):
-    """Bulk rename a symbol across all trades for a specific broker."""
-    if old_symbol == new_symbol: return
-    with db_session() as conn:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE trades SET symbol = ? WHERE symbol = ? AND broker = ?", (new_symbol, old_symbol, broker))
-        
-        # Remove the old holding entry for this broker/symbol as it's being renamed
-        cursor.execute("DELETE FROM holdings WHERE symbol = ? AND broker = ?", (old_symbol, broker))
-
-        # Cleanup market data only if the old symbol is completely gone
-        cursor.execute("SELECT COUNT(*) FROM trades WHERE symbol = ?", (old_symbol,))
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("DELETE FROM marketdata WHERE symbol = ?", (old_symbol,))
-            cursor.execute("DELETE FROM assets WHERE symbol = ?", (old_symbol,))
 
 def delete_trade(broker: str, trade_id: str):
     with db_session() as conn:

@@ -9,55 +9,63 @@ from abc import ABC, abstractmethod
 import sys
 from datetime import datetime
 
-from TKinter_Tracker.ui_theme import ModernStyle
+from ui_theme import ModernStyle
 
-from TKinter_Tracker.ui_widgets import ModernButton
-from TKinter_Tracker.ui_utils import center_window
-
+from ui_widgets import ModernButton
+from ui_utils import center_window
 
 def _create_date_input(parent: tk.Misc, text_var: tk.StringVar) -> tk.Widget:
-    """Create a date input with calendar picker - fixed version."""
     try:
         from tkcalendar import DateEntry
         from datetime import datetime
 
-        # Guarantee a valid initial date (prevents many blanking bugs)
+        # Guarantee a valid initial date before creating the widget
         current = text_var.get().strip()
-        if not current or len(current) < 8:
-            text_var.set(datetime.now().strftime("%Y-%m-%d"))
+        try:
+            init_dt = datetime.strptime(current, "%Y-%m-%d")
+        except Exception:
+            init_dt = datetime.now()
+            text_var.set(init_dt.strftime("%Y-%m-%d"))
 
         w = DateEntry(
             parent,
-            textvariable=text_var,          # ← MUST be set at creation
+            textvariable=text_var,
             date_pattern="yyyy-mm-dd",
             width=12,
-            state="normal",                 # normal = full features (readonly can cause other issues)
-            foreground=ModernStyle.TEXT_PRIMARY,
-            fieldbackground=ModernStyle.ENTRY_BG,
-            borderwidth=1,
-            relief=tk.SOLID,
-            headersforeground="#4D88EC",
-            headersbackground="#e0f2fe",
-            selectforeground="white",
-            selectbackground="#3b82f6",
-            normalforeground="#1e293b",
-            normalbackground="white",
-            weekendforeground="#dc2626",
-            weekendbackground="#fef2f2",
+            state="normal",
             font=ModernStyle.FONT_BODY,
+            foreground="white",
+            background="#009668",
+            borderwidth=2,
+            relief=tk.SOLID,
+            # Calendar popup colours
+            headersforeground="#4D88EC",
+            headersbackground="#DBEAFE",
+            selectforeground="white",
+            selectbackground="#FF6B6B",
+            normalforeground="#000000",
+            normalbackground="#F0F0F0",
+            weekendforeground="#E5E5E5",
+            weekendbackground="#FF0000",
+            disabledbackground="#D3D3D3",
+            disabledforeground="#A9A9A9",
+            cursor="hand2",
         )
+        try:
+            w.set_date(init_dt)
+        except Exception:
+            pass
+        
+        def _on_selected(event=None):
+            val = w.get()
+            if val:  # guard against empty intermediate events
+                text_var.set(val)
 
-        # Extra sync binding - this fixes the "goes blank" bug in 95% of cases
-        def on_date_selected(event=None):
-            text_var.set(w.get())           # force update
+        w.bind("<<DateEntrySelected>>", _on_selected)
 
-        w.bind("<<DateEntrySelected>>", on_date_selected)
-
-        print("[DATE_INPUT] Fixed DateEntry created successfully")
         return w
 
     except Exception as e:
-        print(f"[DATE_INPUT] tkcalendar failed: {e}. Using fallback.")
         return tk.Entry(
             parent,
             textvariable=text_var,
@@ -69,14 +77,6 @@ def _create_date_input(parent: tk.Misc, text_var: tk.StringVar) -> tk.Widget:
         )
 
 def _enable_canvas_mousewheel(canvas: tk.Canvas, *, include_widget: tk.Widget | None = None) -> None:
-    """Enable mouse wheel scrolling for a Canvas containing an embedded Frame.
-
-    Tk only sends the wheel event to the widget under the pointer. For Canvas+
-    embedded-Frame layouts, that means Labels/Frames inside the canvas won't
-    scroll unless we temporarily bind wheel events globally while the pointer
-    is inside the scroll region.
-    """
-
     def _wheel(event):
         try:
             if sys.platform == "darwin":

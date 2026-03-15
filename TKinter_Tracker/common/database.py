@@ -83,7 +83,7 @@ def close_all_connections(optimize: bool = False):
         _local.conn = None
 
 
-_SCHEMA_VERSION = 3  # Bump when schema changes
+_SCHEMA_VERSION = 5  # Bump when schema changes
 
 
 def _ensure_columns(conn: sqlite3.Connection, table: str, columns: list[tuple[str, str]]):
@@ -272,6 +272,55 @@ def initialize_database(reset=False):
             )
         ''')
 
+        # 8. Watchlist Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS watchlist (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol       TEXT NOT NULL UNIQUE,
+                notes        TEXT DEFAULT '',
+                tags         TEXT DEFAULT '',
+                target_price REAL DEFAULT 0.0,
+                added_on     TEXT DEFAULT '',
+                pe_ratio           TEXT DEFAULT '',
+                peg_ratio          TEXT DEFAULT '',
+                eps                TEXT DEFAULT '',
+                debt_to_equity     TEXT DEFAULT '',
+                book_value         TEXT DEFAULT '',
+                intrinsic_value    TEXT DEFAULT '',
+                roe                TEXT DEFAULT '',
+                roce               TEXT DEFAULT '',
+                opm                TEXT DEFAULT '',
+                free_cash_flow     TEXT DEFAULT '',
+                inventory_days     TEXT DEFAULT '',
+                sales_growth       TEXT DEFAULT '',
+                profit_growth      TEXT DEFAULT '',
+                promoter_holding   TEXT DEFAULT '',
+                pledged_shares     TEXT DEFAULT '',
+                fii_dii_holding    TEXT DEFAULT '',
+                order_book         TEXT DEFAULT '',
+                dma_50_200         TEXT DEFAULT '',
+                rsi                TEXT DEFAULT '',
+                volume             TEXT DEFAULT '',
+                ebitda_margin      TEXT DEFAULT '',
+                capex              TEXT DEFAULT '',
+                net_profit_margin  TEXT DEFAULT '',
+                sharpe_ratio       TEXT DEFAULT '',
+                qoq_op_profit      TEXT DEFAULT '',
+                beta               TEXT DEFAULT '',
+                week52_range       TEXT DEFAULT '',
+                current_ratio      TEXT DEFAULT '',
+                dividend_yield     TEXT DEFAULT '',
+                pb_ratio           TEXT DEFAULT '',
+                analyst_target     TEXT DEFAULT '',
+                market_cap         TEXT DEFAULT '',
+                action_signal      TEXT DEFAULT '',
+                sector             TEXT DEFAULT '',
+                industry           TEXT DEFAULT '',
+                current_value      TEXT DEFAULT '',
+                stock_name         TEXT DEFAULT ''
+            )
+        ''')
+
         # Migration: Add running_pnl column if it doesn't exist (for existing databases)
         if current_version < 1:
             try:
@@ -282,6 +331,15 @@ def initialize_database(reset=False):
                     cursor.execute("UPDATE holdings SET running_pnl = realized_pnl")
             except Exception:
                 pass
+
+        # Migration: Add stock_name to watchlist
+        try:
+            cursor.execute("PRAGMA table_info(watchlist)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if 'stock_name' not in columns:
+                cursor.execute("ALTER TABLE watchlist ADD COLUMN stock_name TEXT DEFAULT ''")
+        except Exception:
+            pass
 
         # Only create indexes on first run or after schema change
         if current_version < _SCHEMA_VERSION:
@@ -321,3 +379,44 @@ def initialize_database(reset=False):
 if __name__ == "__main__":
     # Run with reset=True to fulfill user request
     initialize_database(reset=True)
+
+def ensure_watchlist_schema():
+    with db_session() as conn:
+        _ensure_columns(conn, "watchlist", [
+            ("pe_ratio", "TEXT DEFAULT ''"),
+            ("peg_ratio", "TEXT DEFAULT ''"),
+            ("eps", "TEXT DEFAULT ''"),
+            ("debt_to_equity", "TEXT DEFAULT ''"),
+            ("book_value", "TEXT DEFAULT ''"),
+            ("intrinsic_value", "TEXT DEFAULT ''"),
+            ("roe", "TEXT DEFAULT ''"),
+            ("roce", "TEXT DEFAULT ''"),
+            ("opm", "TEXT DEFAULT ''"),
+            ("free_cash_flow", "TEXT DEFAULT ''"),
+            ("inventory_days", "TEXT DEFAULT ''"),
+            ("sales_growth", "TEXT DEFAULT ''"),
+            ("profit_growth", "TEXT DEFAULT ''"),
+            ("promoter_holding", "TEXT DEFAULT ''"),
+            ("pledged_shares", "TEXT DEFAULT ''"),
+            ("fii_dii_holding", "TEXT DEFAULT ''"),
+            ("order_book", "TEXT DEFAULT ''"),
+            ("dma_50_200", "TEXT DEFAULT ''"),
+            ("rsi", "TEXT DEFAULT ''"),
+            ("volume", "TEXT DEFAULT ''"),
+            ("ebitda_margin", "TEXT DEFAULT ''"),
+            ("capex", "TEXT DEFAULT ''"),
+            ("net_profit_margin", "TEXT DEFAULT ''"),
+            ("sharpe_ratio", "TEXT DEFAULT ''"),
+            ("qoq_op_profit", "TEXT DEFAULT ''"),
+            ("beta", "TEXT DEFAULT ''"),
+            ("week52_range", "TEXT DEFAULT ''"),
+            ("current_ratio", "TEXT DEFAULT ''"),
+            ("dividend_yield", "TEXT DEFAULT ''"),
+            ("pb_ratio", "TEXT DEFAULT ''"),
+            ("analyst_target", "TEXT DEFAULT ''"),
+            ("market_cap", "TEXT DEFAULT ''"),
+            ("action_signal", "TEXT DEFAULT ''"),
+            ("sector", "TEXT DEFAULT ''"),
+            ("industry", "TEXT DEFAULT ''"),
+            ("current_value", "TEXT DEFAULT ''")
+        ])

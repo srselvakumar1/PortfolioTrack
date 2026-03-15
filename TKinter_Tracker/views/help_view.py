@@ -5,9 +5,9 @@ Help view for TKinter-based PTracker application.
 import tkinter as tk
 from tkinter import ttk
 
-from TKinter_Tracker.views.base_view import BaseView, _enable_canvas_mousewheel
-from TKinter_Tracker.ui_theme import ModernStyle
-from TKinter_Tracker.ui_widgets import ModernButton
+from views.base_view import BaseView, _enable_canvas_mousewheel
+from ui_theme import ModernStyle
+from ui_widgets import ModernButton
 
 class HelpView(BaseView):
     """Help and documentation view."""
@@ -15,7 +15,7 @@ class HelpView(BaseView):
     def build(self):
         """Build help documentation view (rich, sectioned like the Flet help page)."""
 
-        self._help_font_scale = 0
+        self._help_font_scale = 2
 
         header_frame = tk.Frame(self, bg=ModernStyle.BG_PRIMARY, height=60)
         header_frame.pack(fill="x", padx=15, pady=(15, 10))
@@ -30,6 +30,9 @@ class HelpView(BaseView):
         tk.Label(right, text="Text Size", fg=ModernStyle.TEXT_TERTIARY, bg=ModernStyle.BG_PRIMARY, font=ModernStyle.FONT_SMALL).pack(side="left", padx=(0, 8))
         ModernButton(right, text="-", command=lambda: self._help_adjust_font(-1), bg=ModernStyle.BG_TERTIARY, fg=ModernStyle.TEXT_PRIMARY, canvas_bg=ModernStyle.BG_PRIMARY, width=42, height=34).pack(side="left", padx=(0, 6))
         ModernButton(right, text="+", command=lambda: self._help_adjust_font(1), bg=ModernStyle.BG_TERTIARY, fg=ModernStyle.TEXT_PRIMARY, canvas_bg=ModernStyle.BG_PRIMARY, width=42, height=34).pack(side="left")
+
+        # Accent divider
+        tk.Frame(self, bg="#D4AF37", height=1).pack(fill="x", padx=15, pady=(10, 10))
 
         # Scrollable container
         canvas = tk.Canvas(self, bg=ModernStyle.BG_PRIMARY, highlightthickness=0)
@@ -170,14 +173,16 @@ class HelpView(BaseView):
             ["Total IV", "-", "-", "₹214.25"],
         ]
 
-        fees_cols = ["Charge Name", "Rate / Logic", "Sample (₹1L Buy)"]
+        fees_cols = ["Charge", "Rate / Logic", "BUY ₹1L sample", "SELL ₹1L sample"]
         fees_rows = [
-            ["Brokerage", "Fixed ₹10", "₹10.00"],
-            ["STT", "0.1% on Turnover", "₹100.00"],
-            ["Stamp Duty", "0.015% (Buy)", "₹15.00"],
-            ["SEBI", "Fixed ₹10", "₹10.00"],
-            ["GST", "18% on (Brkg+SEBI)", "₹3.60"],
-            ["Total Fees", "-", "₹138.60"],
+            ["Brokerage",         "Flat ₹1 per order",               "₹1.00",    "₹1.00"],
+            ["STT",               "0.1% of turnover (both sides)",   "₹100.00",  "₹100.00"],
+            ["Transaction Chg",   "0.00297% of turnover (NSE)",      "₹2.97",    "₹2.97"],
+            ["SEBI Charges",      "₹10 per crore (0.0001%)",           "₹0.10",    "₹0.10"],
+            ["Stamp Duty",        "0.015% of turnover (BUY only)",   "₹15.00",   "-"],
+            ["DP Charges",        "₹13.00 + 18% GST = ₹15.34 (SELL)", "-",       "₹15.34"],
+            ["GST",               "18% on (Trans + SEBI) only",     "₹0.55",    "₹0.55"],
+            ["Total Fees",        "-",                               "₹119.62",  "₹119.96"],
         ]
 
         calc_levels_cols = ["Calculation", "Level", "Reason"]
@@ -240,11 +245,149 @@ class HelpView(BaseView):
         self._help_item(s, "REDUCE", "Current Market Price > 110% of Intrinsic Value.")
         self._help_item(s, "HOLD", "Price is between 70% and 110% of Intrinsic Value.")
 
-        s = self._help_card(parent, "Trade Fees (Indian Equity Rules)")
-        self._help_item(s, "Charge Breakdown", "A simplified fee table for delivery trades.")
+        s = self._help_card(parent, "Trade Fees (Indian Equity — NSE Delivery)")
+        self._help_item(
+            s, "Charge Breakdown",
+            "Fee table for equity delivery trades on NSE (early-2024 rates). "
+            "All charges apply per order. Sample columns assume a ₹1,00,000 turnover trade."
+        )
         self._help_table(s, fees_cols, fees_rows)
-        self._help_item(s, "DP Charges", "DP charges typically apply on SELL delivery trades.")
+        self._help_item(
+            s, "Key Notes",
+            "• Brokerage: flat ₹1 per order (not percentage-based).\n"
+            "• STT: 0.1% on both BUY and SELL sides.\n"
+            "• Stamp Duty: 0.015% on BUY side only.\n"
+            "• DP Charges: ₹13.00 + 18% GST = ₹15.34 on SELL delivery trades only.\n"
+            "• GST: 18% on Transaction Charges + SEBI Charges only.\n"
+            "• SEBI Charges: ₹10 per crore of turnover."
+        )
+        self._help_item(
+            s, "BUY Formula",
+            "Total = ₹1 (Brkg) + STT(0.1%) + TxnChg(0.00297%) + SEBI(0.0001%) + Stamp(0.015%) + GST(18% on TxnChg+SEBI)"
+        )
+        self._help_item(
+            s, "SELL Formula",
+            "Total = ₹1 (Brkg) + STT(0.1%) + TxnChg(0.00297%) + SEBI(0.0001%) + DP(₹15.34) + GST(18% on TxnChg+SEBI)"
+        )
 
         s = self._help_card(parent, "Market Data & Sync")
         self._help_item(s, "Data Source", "Market data is fetched via yfinance. Indian symbols may be suffixed with .NS or .BO.")
         self._help_item(s, "Syncing", "Market data sync runs in the background to keep the UI responsive.")
+
+        # ── Tax Report & Harvesting ────────────────────────────────────────────
+        tax_cols = ["Term", "Holding Period", "Tax Rate (Indian Equity)", "FY Window"]
+        tax_rows = [
+            ["STCG", "≤ 1 year", "15% flat on gains", "Apr 1 – Mar 31"],
+            ["LTCG", "> 1 year", "10% on gains above ₹1L exemption", "Apr 1 – Mar 31"],
+        ]
+
+        fifo_cols = ["Step", "Action", "Result"]
+        fifo_rows = [
+            ["1", "Sort all BUY lots for a symbol by date (oldest first)", "Establishes cost queue"],
+            ["2", "Match each SELL against the oldest BUY lot first", "Consumes oldest shares first"],
+            ["3", "Record (Sell Date − Buy Date) to classify STCG vs LTCG", "Determines holding period"],
+            ["4", "Net PnL = Sale Proceeds − Cost − Proportional Fees", "Computes actual gain/loss"],
+        ]
+
+        harvest_cols = ["Scenario", "Action", "Benefit"]
+        harvest_rows = [
+            ["Unrealized loss > ₹10K", "Sell before Mar 31 to book loss", "Offset STCG/LTCG gains"],
+            ["LTCG exemption headroom", "Book gains up to ₹1L", "Avoid 10% tax; re-enter position"],
+            ["Mix of STCG & LTCG lots", "Sell LTCG lots first (hold >1yr)", "Lower effective tax rate"],
+        ]
+
+        s = self._help_card(parent, "📄 Tax Report & Harvesting")
+        self._help_item(
+            s, "What is the Tax Report?",
+            "The Tax Report view computes your Short Term (STCG) and Long Term (LTCG) Capital Gains "
+            "for any selected financial year using FIFO (First-In, First-Out) matching of buy/sell trades. "
+            "It mimics the method used by Indian Income Tax rules."
+        )
+        self._help_table(s, tax_cols, tax_rows)
+
+        self._help_item(
+            s, "How FIFO Matching Works",
+            "For every SELL trade, shares are matched against the earliest BUY lots first. "
+            "The holding period (Buy Date → Sell Date) determines whether the gain is classified as STCG or LTCG."
+        )
+        self._help_table(s, fifo_cols, fifo_rows)
+
+        self._help_item(
+            s, "Steps to Generate Your Tax Report",
+            "1. Navigate to Tax Report from the sidebar.\n"
+            "2. Select the applicable Financial Year (FY 2024-2025 = April 1, 2024 – March 31, 2025).\n"
+            "3. The summary cards show your total STCG, LTCG, and combined taxable gains.\n"
+            "4. The table below lists every sale with its holding duration, gain type, and net PnL.\n"
+            "5. Use this data when filing your ITR under Schedule CG (Capital Gains)."
+        )
+
+        self._help_item(
+            s, "Tax Harvesting Strategies",
+            "Tax-loss harvesting allows you to reduce your taxable gains by strategically selling "
+            "positions before the financial year ends. Common strategies are listed below."
+        )
+        self._help_table(s, harvest_cols, harvest_rows)
+
+        self._help_item(
+            s, "Important Notes",
+            "• This report is for reference only and does not constitute professional tax advice.\n"
+            "• Fees are apportioned proportionally to each matched SELL chunk.\n"
+            "• If a SELL consumes lots with different holding periods, the longest period is displayed.\n"
+            "• Always verify the output with a CA or tax professional before filing.\n"
+            "• LTCG exemption of ₹1 lakh per FY applies only to equity/equity mutual funds (Section 112A)."
+        )
+
+
+        # ── Watchlist Advanced Metrics ─────────────────────────────────────────
+
+        s = self._help_card(parent, "📊 Advanced Watchlist Benchmarks")
+        self._help_item(
+            s, "Using Advanced Metrics",
+            "The Watchlist allows you to track up to 20 fundamental and technical metrics for any symbol. "
+            "Use the following benchmarks to evaluate if a stock matches your investing criteria."
+        )
+
+        val_cols = ["Metric / Ratio", "Ideal Benchmark / Target", "Description"]
+        val_rows = [
+            ["P/E Ratio", "Compare with Industry", "Price-to-Earnings; determines if the stock is cheap or expensive. Avoid 'Value Traps' with very low P/E."],
+            ["PEG Ratio", "< 1.0 (Best) or < 2.0", "Price/Earnings to Growth; measures if the P/E is justified by the company's growth rate."],
+            ["EPS", "Double Digits (>10)", "Earnings Per Share; the portion of a company's profit allocated to each outstanding share."],
+            ["Debt to Equity", "< 1.0", "Total liabilities divided by shareholder equity; ensures the company is not over-leveraged."],
+            ["Book Value", "Compare to Price", "The net asset value. Useful for understanding 'De-listing' or liquidation value."],
+            ["Intrinsic Value", "Higher than Market Price", "The actual 'fair value' of the business based on its brand and assets."],
+        ]
+        self._help_table(s, val_cols, val_rows)
+
+        prof_cols = ["Metric / Ratio", "Ideal Benchmark / Target", "Description"]
+        prof_rows = [
+            ["ROE", "Double Digits", "Return on Equity; measures how effectively the company uses investor money to generate profit."],
+            ["ROCE", "Double Digits", "Return on Capital Employed; measures profit against total capital (Equity + Debt)."],
+            ["OPM (%)", "> 10% - 15%", "Operating Profit Margin; the percentage of revenue left after paying for variable costs."],
+            ["Free Cash Flow", "Must be Positive", "The actual cash remaining after all expenses and investments (CapEx)."],
+            ["Inventory Days", "Lower is generally better", "The number of days it takes to turn stock into sales."],
+        ]
+        self._help_table(s, prof_cols, prof_rows)
+
+        growth_cols = ["Metric", "Target", "Description"]
+        growth_rows = [
+            ["Sales Growth", "Double Digits", "Revenue growth on a Year-on-Year (YoY) and Quarter-on-Quarter (QoQ) basis."],
+            ["Profit Growth", "Double Digits", "Net profit growth; must ideally grow faster than or equal to sales growth."],
+        ]
+        self._help_table(s, growth_cols, growth_rows)
+
+        op_cols = ["Metric", "Observation", "Description"]
+        op_rows = [
+            ["Promoter Holding", "High & Stable", "The percentage of the company owned by the founders/owners."],
+            ["Pledged Shares", "Zero (Ideal)", "Whether promoters have used their shares as collateral for loans."],
+            ["FII / DII Holding", "Increasing / Stable", "Ownership by Foreign and Domestic Institutional Investors (Mutual Funds)."],
+            ["Order Book", "High Visibility", "Total value of orders yet to be executed; provides a roadmap for future revenue."],
+        ]
+        self._help_table(s, op_cols, op_rows)
+
+        tech_cols = ["Metric", "Observation", "Description"]
+        tech_rows = [
+            ["50 & 200 DMA", "Above the lines", "Moving Averages; used to see if the stock is in a long-term uptrend."],
+            ["RSI", "30 (Oversold) / 70 (Overbought)", "Relative Strength Index; identifies if a stock is at a buying or selling extreme."],
+            ["Volume", "Increasing", "Confirms if a price movement is backed by significant market interest."],
+        ]
+        self._help_table(s, tech_cols, tech_rows)

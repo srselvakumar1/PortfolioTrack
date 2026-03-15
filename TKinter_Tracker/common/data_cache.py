@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from database import db_session
+from common.database import db_session
 
 
 @dataclass(frozen=True)

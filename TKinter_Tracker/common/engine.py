@@ -1,5 +1,6 @@
+
 import yfinance as yf
-from database import db_session
+from common.database import db_session
 from datetime import datetime
 import time
 import math
@@ -200,45 +201,6 @@ def get_stored_dashboard_metrics() -> dict | None:
         if not rows: return None
         return {row[0]: row[1] for row in rows}
 
-def calculate_trade_fees(trade_type: str, qty: float, price: float, is_delivery: bool = True) -> float:
-    """
-    Calculates total fees based on Indian stock market rules.
-
-    Breakdown:
-    - Brokerage: 0.03% of turnover (or flat ₹20 minimum)
-    - SEBI charges: 0.0001% of turnover (₹1 per crore)
-    - Stamp duty: 0.015% on BUY, 0.001% on SELL
-    - DP charges: ₹15.34 on SELL (delivery holding charges)
-    - GST: 18% on all charges except stamp duty
-    """
-    trade_type = trade_type.upper()
-    turnover = qty * price
-
-    # Brokerage: 0.03% with ₹20 minimum
-    brokerage = max(turnover * 0.0003, 20.0) if is_delivery else turnover * 0.0001
-
-    # SEBI charges: ₹1 per crore
-    sebi_charges = max(turnover / 10000000, 1.0)  # ₹1 per ₹1 crore
-
-    # Stamp duty: 0.015% on BUY, 0.001% on SELL
-    stamp_duty = 0.0
-    if trade_type == 'BUY':
-        stamp_duty = turnover * 0.00015  # 0.015%
-    elif trade_type == 'SELL':
-        stamp_duty = turnover * 0.00001  # 0.001%
-
-    # DP (Depository Participant) charges: ₹15.34 on SELL only
-    dp_charges = 0.0
-    if trade_type == 'SELL' and is_delivery:
-        dp_charges = 15.34
-
-    # GST: 18% on (brokerage + SEBI + DP charges), NOT on stamp duty
-    taxable_amount = brokerage + sebi_charges + dp_charges
-    gst = taxable_amount * 0.18
-
-    total_fees = brokerage + sebi_charges + stamp_duty + gst + dp_charges
-    return round(total_fees, 2)
-
 def calculate_intrinsic_value(eps: float, growth_rate: float = 0.12, discount_rate: float = 0.10, terminal_multiple: float = 15.0) -> float:
     """Calculates Intrinsic Value using a 5-year DCF snapshot."""
     if eps is None or (isinstance(eps, float) and math.isnan(eps)) or eps <= 0:
@@ -258,6 +220,55 @@ def calculate_intrinsic_value(eps: float, growth_rate: float = 0.12, discount_ra
 
     iv += terminal_value / ((1 + discount_rate) ** 5)
     return round(iv, 2)
+
+def get_iv_signal(current_price: float, iv: float) -> str:
+    """Calculates action signal based on Intrinsic Value."""
+    if iv <= 0 or current_price <= 0: return "N/A"
+    if current_price < (0.70 * iv): return "ACCUMULATE"
+    elif current_price > (1.10 * iv): return "REDUCE"
+    else: return "HOLD"
+
+def calculate_trade_fees(trade_type: str, qty: float, price: float, is_delivery: bool = True) -> float:
+    """
+    Calculates total fees for Indian equity delivery trades.
+
+    Breakdown (NSE / SEBI rates, early-2024):
+    - Brokerage       : Flat ₹1 per order
+    - STT             : 0.1% of turnover (both BUY and SELL)
+    - Transaction Chg : 0.00297% of turnover (NSE rate)
+    - SEBI Charges    : ₹10 per crore (0.0001% of turnover)
+    - Stamp Duty      : 0.015% of turnover (BUY side only)
+    - DP Charges      : ₹13.00 + 18% GST = ₹15.34 per scrip per day (SELL only)
+    - GST             : 18% on (Transaction Charges + SEBI Charges) only
+    """
+    trade_type = trade_type.upper()
+    turnover = qty * price
+
+    # 1. Brokerage: flat ₹1 per order
+    brokerage = 1.0
+
+    # 2. STT: 0.1% on both BUY and SELL
+    stt = turnover * 0.001
+
+    # 3. Transaction charges: 0.00297% (NSE)
+    transaction_charges = turnover * 0.0000297
+
+    # 4. SEBI charges: ₹10 per crore (0.0001%)
+    sebi_charges = turnover / 10_000_000 * 10  # = turnover * 0.000001
+
+    # 5. Stamp duty: 0.015% on BUY side only
+    stamp_duty = turnover * 0.00015 if trade_type == 'BUY' else 0.0
+
+    # 6. DP charges: ₹13.00 + 18% GST = ₹15.34, on SELL only (delivery)
+    dp_charges = 0.0
+    if trade_type == 'SELL' and is_delivery:
+        dp_charges = round(13.00 * 1.18, 2)  # ₹15.34
+
+    # 7. GST: 18% on Transaction Charges + SEBI Charges only
+    gst = (brokerage + transaction_charges + sebi_charges) * 0.18
+
+    total_fees = brokerage + stt + transaction_charges + sebi_charges + stamp_duty + dp_charges + gst
+    return round(total_fees, 2)
 
 def calculate_xirr(cashflows, guesses=None, max_iter=100, tol=1e-4) -> float:
     """Calculates internal rate of return using Newton-Raphson.
@@ -299,13 +310,6 @@ def calculate_xirr(cashflows, guesses=None, max_iter=100, tol=1e-4) -> float:
                 break
     return 0.0
 
-def get_iv_signal(current_price: float, iv: float) -> str:
-    """Calculates action signal based on Intrinsic Value."""
-    if iv <= 0 or current_price <= 0: return "N/A"
-    if current_price < (0.70 * iv): return "ACCUMULATE"
-    elif current_price > (1.10 * iv): return "REDUCE"
-    else: return "HOLD"
-
 # ── Parallel Network Fetching Logic ──────────────────────────────────────────
 
 _YFINANCE_TIMEOUT = 10  # seconds per future result
@@ -319,10 +323,25 @@ def _fetch_single_ticker(yf_sym: str, orig_sym: str, now: str):
         ticker = yf.Ticker(yf_sym)
         full_info = ticker.info
 
-        current_price = float(full_info.get('currentPrice', 0.0) or
-                              full_info.get('regularMarketPrice', 0.0) or 0.0)
-        previous_close = float(full_info.get('previousClose', 0.0) or
-                               full_info.get('regularMarketPreviousClose', current_price) or current_price)
+        current_price = 0.0
+        try:
+            val = float(ticker.fast_info.last_price)
+            if not math.isnan(val): current_price = val
+        except Exception:
+            pass
+        if current_price <= 0.0:
+            current_price = float(full_info.get('currentPrice', 0.0) or
+                                  full_info.get('regularMarketPrice', 0.0) or 0.0)
+
+        previous_close = 0.0
+        try:
+            val = float(ticker.fast_info.previous_close)
+            if not math.isnan(val): previous_close = val
+        except Exception:
+            pass
+        if previous_close <= 0.0:
+            previous_close = float(full_info.get('previousClose', 0.0) or
+                                   full_info.get('regularMarketPreviousClose', current_price) or current_price)
 
         # Fallback to .BO if .NS fails to yield a price
         if current_price == 0.0 and not yf_sym.endswith('.BO'):
@@ -384,7 +403,7 @@ def fetch_and_update_market_data(symbols: list):
     # Schema guard: ensure all target columns exist before we attempt to persist.
     # This does NOT fetch anything; it only allows refreshed data to be stored.
     try:
-        from database import ensure_marketdata_schema
+        from common.database import ensure_marketdata_schema
         ensure_marketdata_schema()
     except Exception:
         pass
@@ -417,17 +436,40 @@ def fetch_and_update_market_data(symbols: list):
         cursor = conn.cursor()
 
         cursor.executemany('''
-            INSERT OR REPLACE INTO marketdata
+            INSERT INTO marketdata
             (symbol, current_price, previous_close, low_52w, high_52w,
              pe_ratio, eps, pb_ratio, roe, roce, debt_to_equity, dividend_yield,
              description, stock_name, sector, last_updated)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(symbol) DO UPDATE SET
+                current_price  = CASE WHEN excluded.current_price > 0 THEN excluded.current_price ELSE marketdata.current_price END,
+                previous_close = CASE WHEN excluded.previous_close > 0 THEN excluded.previous_close ELSE marketdata.previous_close END,
+                low_52w        = CASE WHEN excluded.low_52w > 0 THEN excluded.low_52w ELSE marketdata.low_52w END,
+                high_52w       = CASE WHEN excluded.high_52w > 0 THEN excluded.high_52w ELSE marketdata.high_52w END,
+                pe_ratio       = CASE WHEN excluded.pe_ratio > 0 THEN excluded.pe_ratio ELSE marketdata.pe_ratio END,
+                eps            = CASE WHEN excluded.eps != 0 THEN excluded.eps ELSE marketdata.eps END,
+                pb_ratio       = CASE WHEN excluded.pb_ratio > 0 THEN excluded.pb_ratio ELSE marketdata.pb_ratio END,
+                roe            = CASE WHEN excluded.roe != 0 THEN excluded.roe ELSE marketdata.roe END,
+                roce           = CASE WHEN excluded.roce != 0 THEN excluded.roce ELSE marketdata.roce END,
+                debt_to_equity = CASE WHEN excluded.debt_to_equity >= 0 THEN excluded.debt_to_equity ELSE marketdata.debt_to_equity END,
+                dividend_yield = CASE WHEN excluded.dividend_yield >= 0 THEN excluded.dividend_yield ELSE marketdata.dividend_yield END,
+                description    = excluded.description,
+                sector         = excluded.sector,
+                last_updated   = excluded.last_updated
+                -- Intentionally omitting stock_name to preserve user edits
         ''', marketdata_records)
 
         cursor.executemany('''
-            INSERT OR REPLACE INTO assets
+            INSERT INTO assets
             (symbol, intrinsic_value, action_signal, promoter_holding, fii_holding, dii_holding, last_updated)
             VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(symbol) DO UPDATE SET
+                intrinsic_value  = CASE WHEN excluded.intrinsic_value > 0 THEN excluded.intrinsic_value ELSE assets.intrinsic_value END,
+                action_signal    = CASE WHEN excluded.action_signal != 'N/A' THEN excluded.action_signal ELSE assets.action_signal END,
+                promoter_holding = CASE WHEN excluded.promoter_holding > 0 THEN excluded.promoter_holding ELSE assets.promoter_holding END,
+                fii_holding      = CASE WHEN excluded.fii_holding > 0 THEN excluded.fii_holding ELSE assets.fii_holding END,
+                dii_holding      = CASE WHEN excluded.dii_holding > 0 THEN excluded.dii_holding ELSE assets.dii_holding END,
+                last_updated     = excluded.last_updated
         ''', assets_records)
 
 
@@ -584,6 +626,8 @@ def rebuild_holdings_if_needed():
             cursor.execute("SELECT 1 FROM holdings LIMIT 1")
             has_data = cursor.fetchone() is not None
             if has_data:
+                # Force dashboard metrics to recalculate once per session
+                cursor.execute("DELETE FROM dashboard_metrics")
                 with _holdings_lock:
                     _holdings_built_this_session = True
                 return
@@ -685,7 +729,7 @@ def calculate_overall_xirr(conn=None, broker_filter: str | None = None) -> float
         return calculate_xirr(cashflows)
         
     except Exception as e:
-        print(f"Error calculating overall XIRR: {e}")
+        pass
         return 0.0
 
 
@@ -713,7 +757,9 @@ def get_dashboard_metrics(force_refresh: bool = False) -> dict:
                 SUM(h.qty * h.avg_price),
                 SUM(h.qty * COALESCE(m.current_price, h.avg_price)),
                 SUM(h.running_pnl),
-                SUM(CASE WHEN h.running_pnl < 0 THEN h.running_pnl ELSE 0 END),
+                SUM(CASE WHEN h.realized_pnl < 0 THEN h.realized_pnl ELSE 0 END),
+                SUM(CASE WHEN ((h.qty * COALESCE(m.current_price, h.avg_price)) - (h.qty * h.avg_price)) < 0 
+                         THEN ((h.qty * COALESCE(m.current_price, h.avg_price)) - (h.qty * h.avg_price)) ELSE 0 END),
                 MIN(h.earliest_date)
             FROM holdings h
             LEFT JOIN marketdata m ON h.symbol = m.symbol
@@ -724,7 +770,8 @@ def get_dashboard_metrics(force_refresh: bool = False) -> dict:
         invested, current_val = row[0] or 0.0, row[1] or 0.0
         overall_pnl = row[2] or 0.0
         overall_loss = row[3] or 0.0
-        earliest_date = row[4]
+        unrealized_loss = row[4] or 0.0
+        earliest_date = row[5]
 
         unrealized_pnl = current_val - invested
         realized_pnl = overall_pnl - unrealized_pnl
@@ -747,7 +794,7 @@ def get_dashboard_metrics(force_refresh: bool = False) -> dict:
     result = {
         "total_invested": invested, "total_value": current_val,
         "overall_pnl": overall_pnl, "unrealized_pnl": unrealized_pnl,
-        "realized_pnl": realized_pnl, "realized_loss": realized_loss,
+        "realized_pnl": realized_pnl, "realized_loss": realized_loss, "unrealized_loss": unrealized_loss,
         "overall_xirr": overall_xirr, "overall_cagr": overall_cagr
     }
     with _cache_lock:
@@ -764,7 +811,9 @@ def get_metrics_by_broker() -> dict:
         cursor = conn.cursor()
         cursor.execute('''
             SELECT h.broker, SUM(h.qty * h.avg_price), SUM(h.qty * COALESCE(m.current_price, h.avg_price)),
-                   SUM(h.running_pnl), SUM(CASE WHEN h.running_pnl < 0 THEN h.running_pnl ELSE 0 END),
+                   SUM(h.running_pnl), SUM(CASE WHEN h.realized_pnl < 0 THEN h.realized_pnl ELSE 0 END),
+                   SUM(CASE WHEN ((h.qty * COALESCE(m.current_price, h.avg_price)) - (h.qty * h.avg_price)) < 0 
+                            THEN ((h.qty * COALESCE(m.current_price, h.avg_price)) - (h.qty * h.avg_price)) ELSE 0 END),
                    MIN(h.earliest_date)
             FROM holdings h
             LEFT JOIN marketdata m ON h.symbol = m.symbol
@@ -778,7 +827,8 @@ def get_metrics_by_broker() -> dict:
             broker = row[0]
             invested, current_val = row[1] or 0.0, row[2] or 0.0
             overall_pnl, overall_loss = row[3] or 0.0, row[4] or 0.0
-            earliest_date = row[5]
+            unrealized_loss = row[5] or 0.0
+            earliest_date = row[6]
 
             unrealized_pnl = current_val - invested
             realized_pnl = overall_pnl - unrealized_pnl
@@ -799,7 +849,7 @@ def get_metrics_by_broker() -> dict:
             broker_metrics[broker] = {
                 "total_invested": invested, "total_value": current_val,
                 "overall_pnl": overall_pnl, "unrealized_pnl": unrealized_pnl,
-                "realized_pnl": realized_pnl, "realized_loss": overall_loss,
+                "realized_pnl": realized_pnl, "realized_loss": overall_loss, "unrealized_loss": unrealized_loss,
                 "overall_xirr": overall_xirr, "overall_cagr": overall_cagr
             }
 
@@ -879,12 +929,4 @@ def get_tax_harvesting_opportunities(min_loss_amount: float = 1000.0) -> list:
         _harvesting_cache["_key"] = min_loss_amount
     return result
 
-def auto_sync_if_needed():
-    """
-    Intentionally disabled by user request.
-    Market data will only refresh manually via Dashboard/Holdings views.
-    """
-    pass
 
-def should_sync_market_data() -> bool:
-    return False
